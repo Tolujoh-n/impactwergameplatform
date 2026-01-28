@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initTheme, toggleTheme } from '../utils/theme';
+import api from '../utils/api';
 import LoginModal from './LoginModal';
 import SignupModal from './SignupModal';
 
@@ -103,12 +104,24 @@ const Navbar = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
+  const [navbarCups, setNavbarCups] = useState([]);
   const { user, logout, walletAddress } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     setTheme(initTheme());
+    fetchNavbarCups();
   }, []);
+
+  const fetchNavbarCups = async () => {
+    try {
+      const response = await api.get('/cups/navbar');
+      setNavbarCups(response.data || []);
+    } catch (error) {
+      console.error('Error fetching navbar cups:', error);
+      setNavbarCups([]);
+    }
+  };
 
   const handleThemeToggle = () => {
     const newTheme = toggleTheme();
@@ -228,36 +241,15 @@ const Navbar = () => {
               >
                 Home
               </Link>
-              <Link
-                to="/cup/worldcup"
-                className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                World Cup
-              </Link>
-              <Link
-                to="/cup/championsleague"
-                className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                Champions League
-              </Link>
-              <Link
-                to="/cup/premierleague"
-                className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                Premier League
-              </Link>
-              <Link
-                to="/cup/laliga"
-                className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                La Liga
-              </Link>
-              <Link
-                to="/cup/bundesliga"
-                className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                Bundesliga
-              </Link>
+              {navbarCups.map((cup) => (
+                <Link
+                  key={cup._id}
+                  to={`/cup/${cup.slug}`}
+                  className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  {cup.name}
+                </Link>
+              ))}
             </div>
             <div className="flex items-center space-x-2">
               <Link

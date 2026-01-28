@@ -234,6 +234,36 @@ const Admin = () => {
     }
   };
 
+  const handleUpdateCup = async (cupId, updates) => {
+    try {
+      await api.put(`/admin/cups/${cupId}`, updates);
+      fetchData();
+      showNotification('Cup updated successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to update cup', 'error');
+    }
+  };
+
+  const handleDeleteCup = async (cupId) => {
+    try {
+      await api.delete(`/admin/cups/${cupId}`);
+      fetchData();
+      showNotification('Cup deleted successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to delete cup', 'error');
+    }
+  };
+
+  const handleUpdateNavbarOrder = async (cupOrders) => {
+    try {
+      await api.post('/admin/cups/navbar-order', { cupOrders });
+      fetchData();
+      showNotification('Navbar order updated successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to update navbar order', 'error');
+    }
+  };
+
   const handleCreateBlog = async (blogData) => {
     try {
       await api.post('/admin/blogs', blogData);
@@ -330,7 +360,14 @@ const Admin = () => {
           />
         )}
         {activeTab === 'cups' && (
-          <CupsTab cups={cups} loading={loading} onCreateCup={handleCreateCup} />
+          <CupsTab 
+            cups={cups} 
+            loading={loading} 
+            onCreateCup={handleCreateCup}
+            onUpdateCup={handleUpdateCup}
+            onDeleteCup={handleDeleteCup}
+            onUpdateNavbarOrder={handleUpdateNavbarOrder}
+          />
         )}
         {activeTab === 'stages' && (
           <StagesTab
@@ -1102,14 +1139,68 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
   );
 };
 
-const CupsTab = ({ cups, loading, onCreateCup }) => {
+const CupsTab = ({ cups, loading, onCreateCup, onUpdateCup, onDeleteCup, onUpdateNavbarOrder }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [navbarCups, setNavbarCups] = useState([]);
+  const [draggedItem, setDraggedItem] = useState(null);
+
+  useEffect(() => {
+    // Sort cups by navbarOrder and filter those with showInNavbar
+    const sorted = [...cups]
+      .filter(cup => cup.showInNavbar)
+      .sort((a, b) => (a.navbarOrder || 0) - (b.navbarOrder || 0));
+    setNavbarCups(sorted);
+  }, [cups]);
+
+  const handleToggleNavbar = async (cupId, showInNavbar) => {
+    try {
+      // If enabling, set a default order (max + 1)
+      const updates = { showInNavbar };
+      if (showInNavbar) {
+        const maxOrder = Math.max(...cups.map(c => c.navbarOrder || 0), -1);
+        updates.navbarOrder = maxOrder + 1;
+      }
+      await onUpdateCup(cupId, updates);
+    } catch (error) {
+      console.error('Error toggling navbar:', error);
+    }
+  };
+
+  const handleDragStart = (e, index) => {
+    setDraggedItem(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+    if (draggedItem === null || draggedItem === dropIndex) return;
+
+    const newNavbarCups = [...navbarCups];
+    const [removed] = newNavbarCups.splice(draggedItem, 1);
+    newNavbarCups.splice(dropIndex, 0, removed);
+
+    // Update navbarOrder for all affected cups
+    const cupOrders = newNavbarCups.map((cup, index) => ({
+      cupId: cup._id,
+      navbarOrder: index,
+    }));
+
+    onUpdateNavbarOrder(cupOrders);
+    setDraggedItem(null);
+  };
 
   if (loading) return <div className="text-center py-12">Loading...</div>;
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Cups</h2>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -1117,6 +1208,48 @@ const CupsTab = ({ cups, loading, onCreateCup }) => {
         >
           Create Cup
         </button>
+      </div>
+
+      {/* Navbar Management Section */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+          Manage Navbar Cups
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Drag and drop to reorder cups in the navbar. Toggle visibility to show/hide cups.
+        </p>
+        <div className="space-y-2">
+          {navbarCups.length > 0 ? (
+            navbarCups.map((cup, index) => (
+              <div
+                key={cup._id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, index)}
+                className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-move hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+              >
+                <div className="flex items-center space-x-3">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                  </svg>
+                  <span className="font-medium text-gray-900 dark:text-white">{cup.name}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">({cup.slug})</span>
+                </div>
+                <button
+                  onClick={() => handleToggleNavbar(cup._id, false)}
+                  className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                >
+                  Hide from Navbar
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+              No cups in navbar. Toggle "Show in Navbar" for cups below to add them.
+            </p>
+          )}
+        </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
@@ -1128,6 +1261,8 @@ const CupsTab = ({ cups, loading, onCreateCup }) => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Active Matches</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Active Polls</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Navbar</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -1155,11 +1290,38 @@ const CupsTab = ({ cups, loading, onCreateCup }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {cup.activePolls || 0}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={cup.showInNavbar || false}
+                        onChange={(e) => handleToggleNavbar(cup._id, e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setShowEditModal(cup)}
+                        className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteModal(cup)}
+                        className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                <td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
                   No cups found. Create one to get started!
                 </td>
               </tr>
@@ -1174,6 +1336,44 @@ const CupsTab = ({ cups, loading, onCreateCup }) => {
           onSubmit={onCreateCup}
         />
       )}
+
+      {showEditModal && (
+        <EditCupModal
+          cup={showEditModal}
+          onClose={() => setShowEditModal(null)}
+          onSubmit={(updates) => {
+            onUpdateCup(showEditModal._id, updates);
+            setShowEditModal(null);
+          }}
+        />
+      )}
+
+      {showDeleteModal && (
+        <Modal isOpen={true} onClose={() => setShowDeleteModal(null)} title="Delete Cup">
+          <div className="space-y-4">
+            <p className="text-gray-700 dark:text-gray-300">
+              Are you sure you want to delete <strong>{showDeleteModal.name}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  onDeleteCup(showDeleteModal._id);
+                  setShowDeleteModal(null);
+                }}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(null)}
+                className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
@@ -1186,6 +1386,7 @@ const CreateCupModal = ({ onClose, onSubmit }) => {
     status: 'upcoming',
     startDate: '',
     endDate: '',
+    showInNavbar: false,
   });
 
   const handleSubmit = (e) => {
@@ -1201,7 +1402,7 @@ const CreateCupModal = ({ onClose, onSubmit }) => {
           type="text"
           placeholder="Name"
           value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, '') })}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') })}
           className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           required
         />
@@ -1243,9 +1444,106 @@ const CreateCupModal = ({ onClose, onSubmit }) => {
             className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
         </div>
+        <label className="flex items-center">
+          <input
+            type="checkbox"
+            checked={formData.showInNavbar}
+            onChange={(e) => setFormData({ ...formData, showInNavbar: e.target.checked })}
+            className="mr-2"
+          />
+          <span className="text-gray-700 dark:text-gray-300">Show in Navbar</span>
+        </label>
         <div className="flex space-x-2">
           <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
             Create
+          </button>
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// Edit Cup Modal
+const EditCupModal = ({ cup, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    name: cup.name || '',
+    slug: cup.slug || '',
+    description: cup.description || '',
+    status: cup.status || 'upcoming',
+    startDate: cup.startDate ? new Date(cup.startDate).toISOString().split('T')[0] : '',
+    endDate: cup.endDate ? new Date(cup.endDate).toISOString().split('T')[0] : '',
+    showInNavbar: cup.showInNavbar || false,
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Edit Cup">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <input
+          type="text"
+          placeholder="Name"
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          required
+        />
+        <input
+          type="text"
+          placeholder="Slug"
+          value={formData.slug}
+          onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          required
+        />
+        <textarea
+          placeholder="Description"
+          value={formData.description}
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          rows="3"
+        />
+        <select
+          value={formData.status}
+          onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+        >
+          <option value="upcoming">Upcoming</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+        </select>
+        <div className="grid grid-cols-2 gap-4">
+          <input
+            type="date"
+            value={formData.startDate}
+            onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          />
+          <input
+            type="date"
+            value={formData.endDate}
+            onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          />
+        </div>
+        <label className="flex items-center">
+          <input
+            type="checkbox"
+            checked={formData.showInNavbar}
+            onChange={(e) => setFormData({ ...formData, showInNavbar: e.target.checked })}
+            className="mr-2"
+          />
+          <span className="text-gray-700 dark:text-gray-300">Show in Navbar</span>
+        </label>
+        <div className="flex space-x-2">
+          <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+            Update
           </button>
           <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg">
             Cancel

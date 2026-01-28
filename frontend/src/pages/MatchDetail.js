@@ -126,9 +126,9 @@ const MatchDetail = () => {
   const item = match || poll;
 
   if (type === 'free') {
-    return <FreeMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} />;
+    return <FreeMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} />;
   } else if (type === 'boost') {
-    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} />;
+    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} />;
   } else if (type === 'market') {
     return <MarketMatchView item={item} isPoll={isPoll} navigate={navigate} user={user} showNotification={showNotification} />;
   }
@@ -136,7 +136,7 @@ const MatchDetail = () => {
   return null;
 };
 
-const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim }) => {
+const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate }) => {
   const [showPredictModal, setShowPredictModal] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState(null);
   
@@ -151,10 +151,28 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim }) => {
     return [item.teamA, 'Draw', item.teamB];
   };
 
+  const handleBack = () => {
+    if (item.cup && item.cup.slug) {
+      navigate(`/cup/${item.cup.slug}`);
+    } else {
+      navigate(-1);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
+          {/* Back Button */}
+          <button
+            onClick={handleBack}
+            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 mb-6 transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="font-medium">Back to Cup</span>
+          </button>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
             {isPoll ? item.question : `${item.teamA} vs ${item.teamB}`}
           </h1>
@@ -254,7 +272,7 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim }) => {
   );
 };
 
-const BoostMatchView = ({ item, isPoll, prediction, onPredict, onClaim }) => {
+const BoostMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate }) => {
   const [showPredictModal, setShowPredictModal] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState(null);
   const [amount, setAmount] = useState('');
@@ -270,10 +288,28 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onClaim }) => {
     return [item.teamA, 'Draw', item.teamB];
   };
 
+  const handleBack = () => {
+    if (item.cup && item.cup.slug) {
+      navigate(`/cup/${item.cup.slug}`);
+    } else {
+      navigate(-1);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
+          {/* Back Button */}
+          <button
+            onClick={handleBack}
+            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 mb-6 transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="font-medium">Back to Cup</span>
+          </button>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
             {isPoll ? item.question : `${item.teamA} vs ${item.teamB}`}
           </h1>
@@ -507,9 +543,27 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
     }
   };
 
+  const handleBack = () => {
+    if (item.cup && item.cup.slug) {
+      navigate(`/cup/${item.cup.slug}`);
+    } else {
+      navigate(-1);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Back Button */}
+        <button
+          onClick={handleBack}
+          className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 mb-4 transition-colors"
+        >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          <span className="font-medium">Back to Cup</span>
+        </button>
         {/* Header */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">

@@ -391,6 +391,35 @@ router.put('/cups/:id', async (req, res) => {
   }
 });
 
+// Delete Cup
+router.delete('/cups/:id', async (req, res) => {
+  try {
+    const cup = await Cup.findByIdAndDelete(req.params.id);
+    if (!cup) {
+      return res.status(404).json({ message: 'Cup not found' });
+    }
+    res.json({ message: 'Cup deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update navbar order for cups (bulk update)
+router.post('/cups/navbar-order', async (req, res) => {
+  try {
+    const { cupOrders } = req.body; // Array of { cupId, navbarOrder }
+    
+    const updatePromises = cupOrders.map(({ cupId, navbarOrder }) =>
+      Cup.findByIdAndUpdate(cupId, { navbarOrder }, { new: true })
+    );
+    
+    await Promise.all(updatePromises);
+    res.json({ message: 'Navbar order updated successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Create Stage
 router.post('/stages', async (req, res) => {
   try {

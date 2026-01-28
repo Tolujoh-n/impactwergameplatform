@@ -16,6 +16,18 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get cups for navbar (only those with showInNavbar: true)
+router.get('/navbar', async (req, res) => {
+  try {
+    const cups = await Cup.find({ showInNavbar: true })
+      .sort({ navbarOrder: 1, createdAt: -1 })
+      .select('name slug');
+    res.json(cups);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Get cup by slug
 router.get('/slug/:slug', async (req, res) => {
   try {

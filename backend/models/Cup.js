@@ -32,6 +32,14 @@ const cupSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  showInNavbar: {
+    type: Boolean,
+    default: false,
+  },
+  navbarOrder: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
