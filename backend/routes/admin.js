@@ -7,6 +7,7 @@ const Stage = require('../models/Stage');
 const Prediction = require('../models/Prediction');
 const User = require('../models/User');
 const Blog = require('../models/Blog');
+const Settings = require('../models/Settings');
 
 const router = express.Router();
 
@@ -351,7 +352,7 @@ router.put('/cups/:id', async (req, res) => {
 // Create Stage
 router.post('/stages', async (req, res) => {
   try {
-    const { name, cup, order, startDate, endDate } = req.body;
+    const { name, cup, order, startDate, endDate, isCurrent } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -364,6 +365,7 @@ router.post('/stages', async (req, res) => {
       order: order || 0,
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
+      isCurrent: !!isCurrent,
     });
 
     await stage.save();
@@ -382,6 +384,69 @@ router.post('/matches/:id/status', async (req, res) => {
       return res.status(404).json({ message: 'Match not found' });
     }
     res.json(match);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Set a stage as current for its cup (only one current per cup)
+router.post('/stages/:id/set-current', async (req, res) => {
+  try {
+    const stage = await Stage.findById(req.params.id);
+    if (!stage) {
+      return res.status(404).json({ message: 'Stage not found' });
+    }
+
+    // Unset any other current stages for the same cup
+    await Stage.updateMany(
+      { cup: stage.cup, _id: { $ne: stage._id } },
+      { $set: { isCurrent: false } }
+    );
+
+    stage.isCurrent = true;
+    await stage.save();
+
+    res.json(stage);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Settings Management
+router.get('/settings/:key', async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: req.params.key });
+    if (!setting) {
+      // Return default value
+      const defaults = {
+        dailyFreePlayLimit: 1,
+      };
+      return res.json({ key: req.params.key, value: defaults[req.params.key] || null });
+    }
+    res.json(setting);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/settings/:key', async (req, res) => {
+  try {
+    const { value } = req.body;
+    let setting = await Settings.findOne({ key: req.params.key });
+    
+    if (setting) {
+      setting.value = value;
+      await setting.save();
+    } else {
+      setting = new Settings({
+        key: req.params.key,
+        value,
+        description: req.params.key === 'dailyFreePlayLimit' ? 'Number of free predictions per day' : '',
+      });
+      await setting.save();
+    }
+    
+    res.json(setting);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -20,6 +20,11 @@ const stageSchema = new mongoose.Schema({
   endDate: {
     type: Date,
   },
+  // Indicates the current active stage in the tournament timeline
+  isCurrent: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './components/Notification';
 import Navbar from './components/Navbar';
@@ -17,11 +17,23 @@ import BlogDetail from './pages/BlogDetail';
 import Footer from './components/Footer';
 import './App.css';
 
+// Component to handle scroll to top on route change
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+};
+
 function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
         <Router>
+          <ScrollToTop />
           <div className="App min-h-screen bg-gray-50 dark:bg-gray-900">
             <Navbar />
             <Routes>

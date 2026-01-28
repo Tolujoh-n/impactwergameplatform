@@ -3,7 +3,6 @@ import api from '../utils/api';
 import { useNotification } from '../components/Notification';
 import Modal from '../components/Modal';
 import SlateEditor from '../components/SlateEditor';
-import SlateToolbar from '../components/SlateToolbar';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('matches');
@@ -32,19 +31,22 @@ const Admin = () => {
     try {
       if (activeTab === 'matches') {
         const response = await api.get('/matches');
-        setMatches(response.data);
+        setMatches(response.data || []);
       } else if (activeTab === 'cups') {
         const response = await api.get('/cups');
-        setCups(response.data);
+        setCups(response.data || []);
       } else if (activeTab === 'polls') {
         const response = await api.get('/polls');
-        setPolls(response.data);
+        setPolls(response.data || []);
       } else if (activeTab === 'blogs') {
         const response = await api.get('/admin/blogs');
-        setBlogs(response.data);
+        setBlogs(response.data || []);
+      } else if (activeTab === 'settings') {
+        // Settings will be handled separately
       }
     } catch (error) {
-      showNotification('Error fetching data', 'error');
+      console.error('Error fetching data:', error);
+      showNotification(error.response?.data?.message || 'Error fetching data', 'error');
     } finally {
       setLoading(false);
     }
@@ -222,7 +224,7 @@ const Admin = () => {
         {/* Tabs */}
         <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
           <nav className="-mb-px flex space-x-8">
-            {['matches', 'polls', 'cups', 'stages', 'blogs'].map((tab) => (
+            {['matches', 'polls', 'cups', 'stages', 'blogs', 'settings'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -282,6 +284,9 @@ const Admin = () => {
             onUpdateBlog={handleUpdateBlog}
             onDeleteBlog={handleDeleteBlog}
           />
+        )}
+        {activeTab === 'settings' && (
+          <SettingsTab />
         )}
       </div>
     </div>
@@ -655,7 +660,7 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll })
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="text-center py-12">Loading...</div>;
 
   return (
     <div>
@@ -663,12 +668,68 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll })
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Polls</h2>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
         >
           Create Poll
         </button>
       </div>
-      {/* Polls table similar to matches */}
+      
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Question</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Result</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            {polls.length > 0 ? (
+              polls.map((poll) => (
+                <tr key={poll._id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                    {poll.question}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {poll.type}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 rounded-full text-xs ${
+                      poll.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                      poll.status === 'settled' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200' :
+                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                    }`}>
+                      {poll.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {poll.result || 'Pending'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                    {poll.status === 'settled' && !poll.isResolved && (
+                      <button
+                        onClick={() => setShowResolveModal(poll)}
+                        className="text-green-600 hover:text-green-900 dark:text-green-400"
+                      >
+                        Resolve
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  No polls found. Create one to get started!
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      
       {showCreateModal && (
         <CreatePollModal
           cups={cups}
@@ -792,7 +853,7 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
 const CupsTab = ({ cups, loading, onCreateCup }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="text-center py-12">Loading...</div>;
 
   return (
     <div>
@@ -800,12 +861,61 @@ const CupsTab = ({ cups, loading, onCreateCup }) => {
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Cups</h2>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
         >
           Create Cup
         </button>
       </div>
-      {/* Cups list */}
+      
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Name</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Slug</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Active Matches</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Active Polls</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            {cups.length > 0 ? (
+              cups.map((cup) => (
+                <tr key={cup._id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                    {cup.name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {cup.slug}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 rounded-full text-xs ${
+                      cup.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                      cup.status === 'completed' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200' :
+                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                    }`}>
+                      {cup.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {cup.activeMatches || 0}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {cup.activePolls || 0}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  No cups found. Create one to get started!
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      
       {showCreateModal && (
         <CreateCupModal
           onClose={() => setShowCreateModal(false)}
@@ -899,6 +1009,7 @@ const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDele
   const [showEditModal, setShowEditModal] = useState(null);
   const [selectedCup, setSelectedCup] = useState(null);
   const [filteredStages, setFilteredStages] = useState([]);
+  const [updatingCurrentId, setUpdatingCurrentId] = useState(null);
 
   useEffect(() => {
     if (selectedCup) {
@@ -949,6 +1060,7 @@ const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDele
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Order</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Cup</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Current</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Start Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">End Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
@@ -965,6 +1077,32 @@ const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDele
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {stage.cup?.name || 'Unknown'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  {stage.isCurrent ? (
+                    <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                      Current
+                    </span>
+                  ) : (
+                    <button
+                      disabled={updatingCurrentId === stage._id}
+                      onClick={async () => {
+                        try {
+                          setUpdatingCurrentId(stage._id);
+                          await api.post(`/admin/stages/${stage._id}/set-current`);
+                          // Refresh stages list
+                          window.location.reload();
+                        } catch (err) {
+                          console.error('Failed to set current stage', err);
+                        } finally {
+                          setUpdatingCurrentId(null);
+                        }
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-900 dark:text-blue-400 disabled:opacity-50"
+                    >
+                      Set Current
+                    </button>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {stage.startDate ? new Date(stage.startDate).toLocaleDateString() : '-'}
@@ -1183,6 +1321,7 @@ const EditStageModal = ({ stage, cups, onClose, onSubmit }) => {
 const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(null);
 
   if (loading) return <div className="text-center py-12">Loading...</div>;
 
@@ -1246,11 +1385,7 @@ const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) 
                     Edit
                   </button>
                   <button
-                    onClick={() => {
-                      if (window.confirm('Are you sure you want to delete this blog?')) {
-                        onDeleteBlog(blog._id);
-                      }
-                    }}
+                    onClick={() => setShowDeleteModal(blog)}
                     className="text-red-600 hover:text-red-900 dark:text-red-400"
                   >
                     Delete
@@ -1284,6 +1419,33 @@ const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) 
             setShowEditModal(null);
           }}
         />
+      )}
+      
+      {showDeleteModal && (
+        <Modal isOpen={true} onClose={() => setShowDeleteModal(null)} title="Delete Blog">
+          <div className="space-y-4">
+            <p className="text-gray-700 dark:text-gray-300">
+              Are you sure you want to delete <strong>{showDeleteModal.title}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  onDeleteBlog(showDeleteModal._id);
+                  setShowDeleteModal(null);
+                }}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(null)}
+                className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -1514,9 +1676,98 @@ const EditBlogModal = ({ blog, onClose, onSubmit }) => {
 
 // Simple Blog Editor wrapper - SlateToolbar needs to be inside Slate context
 const BlogEditor = ({ value, onChange }) => {
+  const [editorValue, setEditorValue] = React.useState(value || [{ type: 'paragraph', children: [{ text: '' }] }]);
+
+  React.useEffect(() => {
+    if (value) {
+      setEditorValue(value);
+    }
+  }, [value]);
+
+  const handleChange = (newValue) => {
+    setEditorValue(newValue);
+    if (onChange) {
+      onChange(newValue);
+    }
+  };
+
   return (
     <div>
-      <SlateEditor value={value} onChange={onChange} showToolbar />
+      <SlateEditor value={editorValue} onChange={handleChange} showToolbar />
+    </div>
+  );
+};
+
+// Settings Tab Component
+const SettingsTab = () => {
+  const [dailyFreePlayLimit, setDailyFreePlayLimit] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const { showNotification } = useNotification();
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const response = await api.get('/admin/settings/dailyFreePlayLimit');
+      if (response.data) {
+        setDailyFreePlayLimit(response.data.value || 1);
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.post('/admin/settings/dailyFreePlayLimit', { value: parseInt(dailyFreePlayLimit) });
+      showNotification('Settings saved successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to save settings', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-12">Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Settings</h2>
+      
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Daily Free Play Limit
+            </label>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+              Number of free predictions a user can make per day
+            </p>
+            <input
+              type="number"
+              min="1"
+              value={dailyFreePlayLimit}
+              onChange={(e) => setDailyFreePlayLimit(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Settings'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

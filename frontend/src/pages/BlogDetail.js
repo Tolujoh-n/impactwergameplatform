@@ -12,10 +12,17 @@ const BlogDetail = () => {
   const [loading, setLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [recentBlogs, setRecentBlogs] = useState([]);
 
   useEffect(() => {
     fetchBlog();
   }, [slug]);
+
+  useEffect(() => {
+    if (blog) {
+      fetchRecentBlogs();
+    }
+  }, [blog]);
 
   const fetchBlog = async () => {
     try {
@@ -110,9 +117,18 @@ const BlogDetail = () => {
     );
   }
 
+  const fetchRecentBlogs = async () => {
+    try {
+      const response = await api.get('/blogs');
+      setRecentBlogs(response.data.filter(b => b._id !== blog._id).slice(0, 5));
+    } catch (error) {
+      console.error('Error fetching recent blogs:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Back Button */}
         <Link
           to="/blogs"
@@ -124,31 +140,34 @@ const BlogDetail = () => {
           Back to Blogs
         </Link>
 
-        {/* Blog Header */}
-        <article className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-          {blog.thumbnail && (
-            <img
-              src={blog.thumbnail}
-              alt={blog.title}
-              className="w-full h-96 object-cover"
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          )}
-          <div className="p-8">
-            <div className="flex items-center justify-between mb-4">
-              <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm">
-                {blog.category}
-              </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {new Date(blog.publishedAt || blog.createdAt).toLocaleDateString()}
-              </span>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            {/* Blog Header */}
+            <article className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden mb-8">
+              {blog.thumbnail && (
+                <img
+                  src={blog.thumbnail}
+                  alt={blog.title}
+                  className="w-full h-96 object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              )}
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm">
+                    {blog.category}
+                  </span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {new Date(blog.publishedAt || blog.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
 
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-              {blog.title}
-            </h1>
+                <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4 text-left">
+                  {blog.title}
+                </h1>
 
             <div className="flex items-center justify-between mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-4">
@@ -213,85 +232,126 @@ const BlogDetail = () => {
               </div>
             </div>
 
-            {/* Blog Content */}
-            <div className="prose dark:prose-invert max-w-none mb-8">
-              <BlogContentRenderer content={blog.content} />
-            </div>
+                {/* Blog Content */}
+                <div className="prose dark:prose-invert max-w-none mb-8">
+                  <div className="text-gray-800 dark:text-gray-200">
+                    <BlogContentRenderer content={blog.content} />
+                  </div>
+                </div>
 
-            {/* Tags */}
-            {blog.tags && blog.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-8">
-                {blog.tags.map((tag, idx) => (
-                  <span
-                    key={idx}
-                    className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full text-sm"
-                  >
-                    #{tag}
-                  </span>
-                ))}
+                {/* Tags */}
+                {blog.tags && blog.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-8">
+                    {blog.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full text-sm"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Comments Section */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                    Comments ({blog.comments?.length || 0})
+                  </h2>
+
+                  {/* Add Comment */}
+                  {user ? (
+                    <form onSubmit={handleComment} className="mb-6">
+                      <textarea
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        placeholder="Write a comment..."
+                        className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white mb-2"
+                        rows="3"
+                      />
+                      <button
+                        type="submit"
+                        className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                      >
+                        Post Comment
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                      <Link to="/login" className="text-blue-500 hover:underline">Login</Link> to comment
+                    </p>
+                  )}
+
+                  {/* Comments List */}
+                  <div className="space-y-4">
+                    {blog.comments && blog.comments.length > 0 ? (
+                      blog.comments.map((comment) => (
+                        <div
+                          key={comment._id || comment.createdAt}
+                          className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4"
+                        >
+                          <div className="flex items-center space-x-3 mb-2">
+                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                              {comment.user?.username?.[0]?.toUpperCase() || 'U'}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900 dark:text-white">
+                                {comment.user?.username || 'Anonymous'}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {new Date(comment.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-gray-700 dark:text-gray-200">{comment.content}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-gray-600 dark:text-gray-400">No comments yet. Be the first to comment!</p>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
+            </article>
+          </div>
 
-            {/* Comments Section */}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-                Comments ({blog.comments?.length || 0})
-              </h2>
-
-              {/* Add Comment */}
-              {user ? (
-                <form onSubmit={handleComment} className="mb-6">
-                  <textarea
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="Write a comment..."
-                    className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white mb-2"
-                    rows="3"
-                  />
-                  <button
-                    type="submit"
-                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                  >
-                    Post Comment
-                  </button>
-                </form>
-              ) : (
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  <Link to="/login" className="text-blue-500 hover:underline">Login</Link> to comment
-                </p>
-              )}
-
-              {/* Comments List */}
+          {/* Sidebar */}
+          <aside className="lg:col-span-1">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 sticky top-24">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Recent Posts</h3>
               <div className="space-y-4">
-                {blog.comments && blog.comments.length > 0 ? (
-                  blog.comments.map((comment) => (
-                    <div
-                      key={comment._id || comment.createdAt}
-                      className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4"
+                {recentBlogs.length > 0 ? (
+                  recentBlogs.map((recentBlog) => (
+                    <Link
+                      key={recentBlog._id}
+                      to={`/blog/${recentBlog.slug}`}
+                      className="block hover:opacity-80 transition-opacity"
                     >
-                      <div className="flex items-center space-x-3 mb-2">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                          {comment.user?.username?.[0]?.toUpperCase() || 'U'}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900 dark:text-white">
-                            {comment.user?.username || 'Anonymous'}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {new Date(comment.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-gray-700 dark:text-gray-300">{comment.content}</p>
-                    </div>
+                      {recentBlog.thumbnail && (
+                        <img
+                          src={recentBlog.thumbnail}
+                          alt={recentBlog.title}
+                          className="w-full h-32 object-cover rounded-lg mb-2"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2">
+                        {recentBlog.title}
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {new Date(recentBlog.publishedAt || recentBlog.createdAt).toLocaleDateString()}
+                      </p>
+                    </Link>
                   ))
                 ) : (
-                  <p className="text-gray-600 dark:text-gray-400">No comments yet. Be the first to comment!</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No recent posts</p>
                 )}
               </div>
             </div>
-          </div>
-        </article>
+          </aside>
+        </div>
       </div>
     </div>
   );
@@ -363,7 +423,7 @@ const BlogContentRenderer = ({ content }) => {
               />
             );
           default:
-            return <p key={index} className="mb-4">{renderText(node.children)}</p>;
+            return <p key={index} className="mb-4 text-gray-800 dark:text-gray-200">{renderText(node.children)}</p>;
         }
       })}
     </div>
@@ -373,12 +433,13 @@ const BlogContentRenderer = ({ content }) => {
 const renderText = (children) => {
   if (!children || !Array.isArray(children)) return '';
   return children.map((child, idx) => {
-    if (typeof child === 'string') return child;
+    if (typeof child === 'string') return <span key={idx} className="text-gray-800 dark:text-gray-200">{child}</span>;
     let text = child.text || '';
-    if (child.bold) text = <strong key={idx}>{text}</strong>;
-    if (child.italic) text = <em key={idx}>{text}</em>;
-    if (child.underline) text = <u key={idx}>{text}</u>;
-    return text || '';
+    const className = "text-gray-800 dark:text-gray-200";
+    if (child.bold) text = <strong key={idx} className={className}>{text}</strong>;
+    if (child.italic) text = <em key={idx} className={className}>{text}</em>;
+    if (child.underline) text = <u key={idx} className={className}>{text}</u>;
+    return text || <span key={idx} className={className}></span>;
   });
 };
 

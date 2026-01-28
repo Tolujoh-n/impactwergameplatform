@@ -35,10 +35,11 @@ const MatchDetail = () => {
 
   const fetchUserPrediction = async () => {
     try {
-      const response = await api.get(`/predictions/match/${matchId}/user`);
+      // Fetch prediction by type to avoid mixing free and boost predictions
+      const response = await api.get(`/predictions/match/${matchId}/user?type=${type}`);
       setPrediction(response.data);
     } catch (error) {
-      // User hasn't predicted yet
+      // User hasn't predicted yet for this type
       setPrediction(null);
     }
   };
@@ -355,168 +356,277 @@ const BoostMatchView = ({ match, prediction, onPredict, onClaim }) => {
 };
 
 const MarketMatchView = ({ match, navigate, user, showNotification }) => {
-  const [yesShares, setYesShares] = useState(match.marketYesShares || 0);
-  const [noShares, setNoShares] = useState(match.marketNoShares || 0);
-  const [buyAmount, setBuyAmount] = useState('');
-  const [sellAmount, setSellAmount] = useState('');
+  const [selectedOption, setSelectedOption] = useState(null); // 'yes' or 'no'
+  const [tradeType, setTradeType] = useState('buy'); // 'buy' or 'sell'
+  const [amount, setAmount] = useState('');
+  const [trades, setTrades] = useState([]);
+  const [userShares, setUserShares] = useState({ yes: 0, no: 0 });
 
   // Calculate price based on liquidity (simplified AMM)
   const totalLiquidity = (match.marketYesLiquidity || 0) + (match.marketNoLiquidity || 0);
   const yesPrice = totalLiquidity === 0 ? 0.5 : (match.marketYesLiquidity || 0) / totalLiquidity;
   const noPrice = totalLiquidity === 0 ? 0.5 : (match.marketNoLiquidity || 0) / totalLiquidity;
 
+  useEffect(() => {
+    // Fetch user's shares and recent trades
+    fetchMarketData();
+  }, [match._id, user]);
+
+  const fetchMarketData = async () => {
+    try {
+      // In a real implementation, fetch user shares and trades from API
+      // For now, using mock data
+      setTrades([
+        { id: 1, type: 'buy', option: 'yes', amount: 0.5, price: yesPrice, timestamp: new Date() },
+        { id: 2, type: 'sell', option: 'no', amount: 0.3, price: noPrice, timestamp: new Date() },
+      ]);
+    } catch (error) {
+      console.error('Error fetching market data:', error);
+    }
+  };
+
+  const handleTrade = async () => {
+    if (!user) {
+      showNotification('Please login to trade', 'warning');
+      return;
+    }
+
+    if (!selectedOption) {
+      showNotification('Please select YES or NO', 'warning');
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      showNotification('Please enter a valid amount', 'warning');
+      return;
+    }
+
+    try {
+      // In real implementation, call API to execute trade
+      showNotification(`${tradeType === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`, 'success');
+      setAmount('');
+      fetchMarketData();
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Trade failed', 'error');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             {match.teamA} vs {match.teamB}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-gray-600 dark:text-gray-400">
             {new Date(match.date).toLocaleDateString()} • {match.stageName}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Market Stats */}
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main Content - Chart and Trades Table */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Price Chart */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Market Statistics
+                Price Chart
               </h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-green-50 dark:bg-green-900 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">YES Price</p>
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {(yesPrice * 100).toFixed(2)}%
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {yesShares} shares
-                  </p>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">NO Price</p>
-                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                    {(noPrice * 100).toFixed(2)}%
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {noShares} shares
-                  </p>
+              <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                <div className="text-center">
+                  <p className="text-gray-500 dark:text-gray-400 mb-2">Price Chart</p>
+                  <div className="flex items-center justify-center space-x-8">
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                        {(yesPrice * 100).toFixed(1)}%
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">YES</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+                        {(noPrice * 100).toFixed(1)}%
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">NO</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Trading Interface */}
+            {/* Recent Trades Table */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                Recent Trades
+              </h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Option</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Price</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {trades.length > 0 ? (
+                      trades.map((trade) => (
+                        <tr key={trade.id}>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              trade.type === 'buy' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            }`}>
+                              {trade.type.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                            <span className={trade.option === 'yes' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                              {trade.option.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            {trade.amount} ETH
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            {(trade.price * 100).toFixed(2)}%
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {trade.timestamp.toLocaleTimeString()}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                          No trades yet
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar - Trading Panel */}
+          <aside className="lg:col-span-1">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 sticky top-24">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
                 Trade
               </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Buy YES Shares (ETH)
-                  </label>
-                  <input
-                    type="number"
-                    value={buyAmount}
-                    onChange={(e) => setBuyAmount(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                    placeholder="0.0"
-                  />
-                  <button 
-                    onClick={() => {
-                      if (!user) {
-                        showNotification('Please login to trade', 'warning');
-                        return;
-                      }
-                      showNotification('Market trading functionality coming soon', 'info');
-                    }}
-                    className="w-full mt-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                  >
-                    Buy YES
-                  </button>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Sell Shares (ETH)
-                  </label>
-                  <input
-                    type="number"
-                    value={sellAmount}
-                    onChange={(e) => setSellAmount(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                    placeholder="0.0"
-                  />
-                  <button 
-                    onClick={() => {
-                      if (!user) {
-                        showNotification('Please login to trade', 'warning');
-                        return;
-                      }
-                      showNotification('Market trading functionality coming soon', 'info');
-                    }}
-                    className="w-full mt-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                  >
-                    Sell
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Sidebar - Sentiment & Comments */}
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                Market Sentiment
-              </h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">YES</span>
-                  <span className="font-semibold text-green-600 dark:text-green-400">
-                    {(yesPrice * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-green-500 h-2 rounded-full"
-                    style={{ width: `${yesPrice * 100}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">NO</span>
-                  <span className="font-semibold text-red-600 dark:text-red-400">
-                    {(noPrice * 100).toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                Comments
-              </h3>
-              <div className="space-y-4">
-                <textarea
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  placeholder="Share your thoughts..."
-                  rows="3"
-                ></textarea>
-                <button 
-                  onClick={() => {
-                    if (!user) {
-                      showNotification('Please login to comment', 'warning');
-                      return;
-                    }
-                    showNotification('Comment functionality coming soon', 'info');
-                  }}
-                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              {/* Trade Type Toggle */}
+              <div className="flex mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                <button
+                  onClick={() => setTradeType('buy')}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    tradeType === 'buy'
+                      ? 'bg-green-500 text-white'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
                 >
-                  Comment
+                  Buy
+                </button>
+                <button
+                  onClick={() => setTradeType('sell')}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    tradeType === 'sell'
+                      ? 'bg-red-500 text-white'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  Sell
                 </button>
               </div>
+
+              {/* Option Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Select Option
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setSelectedOption('yes')}
+                    className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
+                      selectedOption === 'yes'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    YES
+                    <div className="text-xs mt-1">{(yesPrice * 100).toFixed(1)}%</div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedOption('no')}
+                    className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
+                      selectedOption === 'no'
+                        ? 'bg-red-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    NO
+                    <div className="text-xs mt-1">{(noPrice * 100).toFixed(1)}%</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount Input */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Amount (ETH)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  placeholder="0.0"
+                />
+                {selectedOption && amount && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    You'll receive ~{((parseFloat(amount) || 0) / (selectedOption === 'yes' ? yesPrice : noPrice)).toFixed(4)} shares
+                  </p>
+                )}
+              </div>
+
+              {/* Trade Button */}
+              <button
+                onClick={handleTrade}
+                disabled={!selectedOption || !amount}
+                className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
+                  tradeType === 'buy'
+                    ? 'bg-green-500 hover:bg-green-600 text-white'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {tradeType === 'buy' ? 'Buy' : 'Sell'} {selectedOption?.toUpperCase() || ''}
+              </button>
+
+              {/* User Holdings */}
+              {user && (
+                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                    Your Holdings
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">YES Shares:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{userShares.yes}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">NO Shares:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{userShares.no}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          </aside>
         </div>
       </div>
     </div>

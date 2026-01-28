@@ -31,7 +31,8 @@ const CupPage = () => {
       setAwardPolls(pollsRes.data);
 
       if (stagesRes.data.length > 0) {
-        setSelectedStage(stagesRes.data[0]._id);
+        const currentStage = stagesRes.data.find(s => s.isCurrent);
+        setSelectedStage((currentStage && currentStage._id) || stagesRes.data[0]._id);
       }
 
       if (matchesRes.data.length > 0) {
@@ -120,22 +121,57 @@ const CupPage = () => {
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
                 Tournament Timeline
               </h2>
-              <ul className="space-y-2">
-                {stages.map((stage) => (
-                  <li key={stage._id}>
-                    <button
-                      onClick={() => setSelectedStage(stage._id)}
-                      className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                        selectedStage === stage._id
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {stage.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="relative">
+                {/* Vertical progress line */}
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700" />
+                <ul className="space-y-4 relative">
+                  {stages.map((stage, index) => {
+                    const isSelected = selectedStage === stage._id;
+                    const isCurrent = stage.isCurrent;
+                    return (
+                      <li key={stage._id} className="flex items-start space-x-3">
+                        {/* Timeline dot */}
+                        <div className="relative mt-1">
+                          <div
+                            className={`w-3 h-3 rounded-full border-2 ${
+                              isCurrent
+                                ? 'bg-blue-500 border-blue-500 animate-pulse'
+                                : isSelected
+                                  ? 'bg-blue-500 border-blue-500'
+                                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600'
+                            }`}
+                          />
+                        </div>
+                        <button
+                          onClick={() => setSelectedStage(stage._id)}
+                          className={`flex-1 text-left px-3 py-2 rounded-lg transition-colors ${
+                            isSelected
+                              ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200'
+                              : 'bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-sm">{stage.name}</span>
+                            {isCurrent && (
+                              <span className="ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-500 text-white uppercase tracking-wide">
+                                Current
+                              </span>
+                            )}
+                          </div>
+                          {(stage.startDate || stage.endDate) && (
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {stage.startDate &&
+                                new Date(stage.startDate).toLocaleDateString()}{' '}
+                              {stage.endDate &&
+                                `- ${new Date(stage.endDate).toLocaleDateString()}`}
+                            </p>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             </div>
           </aside>
 
@@ -157,7 +193,7 @@ const CupPage = () => {
                 Match Polls {selectedStage && `(${stages.find(s => s._id === selectedStage)?.name || 'Current Stage'})`}
               </h2>
               {filteredMatches.length > 0 ? (
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredMatches.map((match) => (
                     <MatchCard key={match._id} match={match} />
                   ))}

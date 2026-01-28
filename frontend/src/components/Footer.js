@@ -22,18 +22,20 @@ const Footer = () => {
   };
 
   return (
-    <footer className="bg-gray-900 text-gray-300 mt-16">
+    <footer className="mt-16 bg-gray-50 text-gray-700 dark:bg-gray-900 dark:text-gray-300">
       {/* Featured Blogs Section */}
       {featuredBlogs.length > 0 && (
-        <div className="border-b border-gray-800 py-8">
+        <div className="border-b border-gray-200 dark:border-gray-800 py-8 bg-white dark:bg-gray-900">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h3 className="text-xl font-bold text-white mb-6">Featured Blog Posts</h3>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
+              Featured Blog Posts
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {featuredBlogs.map((blog) => (
                 <Link
                   key={blog._id}
                   to={`/blog/${blog.slug}`}
-                  className="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
+                  className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                 >
                   {blog.thumbnail && (
                     <img
@@ -46,13 +48,13 @@ const Footer = () => {
                     />
                   )}
                   <div className="p-4">
-                    <h4 className="text-lg font-semibold text-white mb-2 line-clamp-2">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
                       {blog.title}
                     </h4>
-                    <p className="text-sm text-gray-400 line-clamp-2 mb-2">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">
                       {blog.description}
                     </p>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
+                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                       <span>{new Date(blog.publishedAt || blog.createdAt).toLocaleDateString()}</span>
                       <span>{blog.views || 0} views</span>
                     </div>
