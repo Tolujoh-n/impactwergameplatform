@@ -2251,6 +2251,12 @@ const BlogEditor = ({ value, onChange }) => {
 // Settings Tab Component
 const SettingsTab = () => {
   const [dailyFreePlayLimit, setDailyFreePlayLimit] = useState(1);
+  const [socialLinks, setSocialLinks] = useState({
+    socialTwitter: '',
+    socialFacebook: '',
+    socialInstagram: '',
+    socialYoutube: '',
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { showNotification } = useNotification();
@@ -2261,9 +2267,22 @@ const SettingsTab = () => {
 
   const fetchSettings = async () => {
     try {
-      const response = await api.get('/admin/settings/dailyFreePlayLimit');
-      if (response.data) {
-        setDailyFreePlayLimit(response.data.value || 1);
+      const [freePlayResponse, socialLinksResponse] = await Promise.all([
+        api.get('/admin/settings/dailyFreePlayLimit'),
+        api.get('/admin/settings/social-links/all'),
+      ]);
+      
+      if (freePlayResponse.data) {
+        setDailyFreePlayLimit(freePlayResponse.data.value || 1);
+      }
+      
+      if (socialLinksResponse.data) {
+        setSocialLinks({
+          socialTwitter: socialLinksResponse.data.socialTwitter || '',
+          socialFacebook: socialLinksResponse.data.socialFacebook || '',
+          socialInstagram: socialLinksResponse.data.socialInstagram || '',
+          socialYoutube: socialLinksResponse.data.socialYoutube || '',
+        });
       }
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -2275,7 +2294,10 @@ const SettingsTab = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.post('/admin/settings/dailyFreePlayLimit', { value: parseInt(dailyFreePlayLimit) });
+      await Promise.all([
+        api.post('/admin/settings/dailyFreePlayLimit', { value: parseInt(dailyFreePlayLimit) }),
+        api.post('/admin/settings/social-links', socialLinks),
+      ]);
       showNotification('Settings saved successfully!', 'success');
     } catch (error) {
       showNotification(error.response?.data?.message || 'Failed to save settings', 'error');
@@ -2292,31 +2314,94 @@ const SettingsTab = () => {
     <div>
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Settings</h2>
       
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Daily Free Play Limit
-            </label>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-              Number of free predictions a user can make per day
-            </p>
-            <input
-              type="number"
-              min="1"
-              value={dailyFreePlayLimit}
-              onChange={(e) => setDailyFreePlayLimit(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            />
+      <div className="space-y-6">
+        {/* Daily Free Play Limit */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Free Play Settings</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Daily Free Play Limit
+              </label>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Number of free predictions a user can make per day
+              </p>
+              <input
+                type="number"
+                min="1"
+                value={dailyFreePlayLimit}
+                onChange={(e) => setDailyFreePlayLimit(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              />
+            </div>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
         </div>
+
+        {/* Social Media Links */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Social Media Links</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Configure social media links that appear in the navbar. Icons are always visible. Set a link to make them clickable, or leave empty to show disabled icons.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                X (Twitter) Link
+              </label>
+              <input
+                type="text"
+                value={socialLinks.socialTwitter}
+                onChange={(e) => setSocialLinks({ ...socialLinks, socialTwitter: e.target.value })}
+                placeholder="https://twitter.com/yourhandle or any link"
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Facebook Link
+              </label>
+              <input
+                type="text"
+                value={socialLinks.socialFacebook}
+                onChange={(e) => setSocialLinks({ ...socialLinks, socialFacebook: e.target.value })}
+                placeholder="https://facebook.com/yourpage or any link"
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Instagram Link
+              </label>
+              <input
+                type="text"
+                value={socialLinks.socialInstagram}
+                onChange={(e) => setSocialLinks({ ...socialLinks, socialInstagram: e.target.value })}
+                placeholder="https://instagram.com/yourhandle or any link"
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                YouTube Link
+              </label>
+              <input
+                type="text"
+                value={socialLinks.socialYoutube}
+                onChange={(e) => setSocialLinks({ ...socialLinks, socialYoutube: e.target.value })}
+                placeholder="https://youtube.com/@yourchannel or any link"
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save All Settings'}
+        </button>
       </div>
     </div>
   );

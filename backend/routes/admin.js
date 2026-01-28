@@ -483,7 +483,60 @@ router.post('/stages/:id/set-current', async (req, res) => {
   }
 });
 
-// Settings Management
+// Social Media Links Management
+router.get('/settings/social-links/all', async (req, res) => {
+  try {
+    const socialKeys = ['socialTwitter', 'socialFacebook', 'socialInstagram', 'socialYoutube'];
+    const socialLinks = {};
+    
+    for (const key of socialKeys) {
+      const setting = await Settings.findOne({ key });
+      socialLinks[key] = setting ? setting.value : '';
+    }
+    
+    res.json(socialLinks);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/settings/social-links', async (req, res) => {
+  try {
+    const { socialTwitter, socialFacebook, socialInstagram, socialYoutube } = req.body;
+    
+    // Accept any string value - no strict validation, allow any link format
+    const socialLinks = {
+      socialTwitter: socialTwitter ? String(socialTwitter).trim() : '',
+      socialFacebook: socialFacebook ? String(socialFacebook).trim() : '',
+      socialInstagram: socialInstagram ? String(socialInstagram).trim() : '',
+      socialYoutube: socialYoutube ? String(socialYoutube).trim() : '',
+    };
+    
+    // Use upsert to update or create settings - no strict validation
+    for (const [key, value] of Object.entries(socialLinks)) {
+      await Settings.findOneAndUpdate(
+        { key },
+        {
+          key,
+          value: value || '', // Allow empty strings
+          description: `Social media link for ${key.replace('social', '')}`,
+          updatedAt: new Date(),
+        },
+        { upsert: true, new: true, runValidators: false } // Disable validators to allow any value
+      );
+    }
+    
+    res.json({ message: 'Social links updated successfully', socialLinks });
+  } catch (error) {
+    console.error('Error updating social links:', error);
+    res.status(500).json({ 
+      message: error.message || 'Failed to update social links',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Settings Management (keep AFTER specific /settings/* routes to avoid route conflicts)
 router.get('/settings/:key', async (req, res) => {
   try {
     const setting = await Settings.findOne({ key: req.params.key });

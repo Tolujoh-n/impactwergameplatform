@@ -26,6 +26,7 @@ app.use('/api/streaks', require('./routes/streaks'));
 app.use('/api/jackpots', require('./routes/jackpots'));
 app.use('/api/stages', require('./routes/stages'));
 app.use('/api/blogs', require('./routes/blogs'));
+app.use('/api/settings', require('./routes/settings'));
 
 // MongoDB connection
 mongoose

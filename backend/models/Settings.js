@@ -9,6 +9,7 @@ const settingsSchema = new mongoose.Schema({
   value: {
     type: mongoose.Schema.Types.Mixed,
     required: true,
+    default: '',
   },
   description: {
     type: String,
