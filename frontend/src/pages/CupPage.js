@@ -26,13 +26,16 @@ const CupPage = () => {
       ]);
 
       setCup(cupRes.data);
-      setStages(stagesRes.data);
+      // Sort stages by order
+      const sortedStages = [...stagesRes.data].sort((a, b) => (a.order || 0) - (b.order || 0));
+      setStages(sortedStages);
       setMatches(matchesRes.data);
       setAwardPolls(pollsRes.data);
 
-      if (stagesRes.data.length > 0) {
-        const currentStage = stagesRes.data.find(s => s.isCurrent);
-        setSelectedStage((currentStage && currentStage._id) || stagesRes.data[0]._id);
+      if (sortedStages.length > 0) {
+        // Find the current active stage (isCurrent or currentActive)
+        const currentStage = sortedStages.find(s => s.isCurrent || s.currentActive);
+        setSelectedStage((currentStage && currentStage._id) || sortedStages[0]._id);
       }
 
       if (matchesRes.data.length > 0) {
@@ -127,7 +130,7 @@ const CupPage = () => {
                 <ul className="space-y-4 relative">
                   {stages.map((stage, index) => {
                     const isSelected = selectedStage === stage._id;
-                    const isCurrent = stage.isCurrent;
+                    const isCurrent = stage.isCurrent || stage.currentActive;
                     return (
                       <li key={stage._id} className="flex items-start space-x-3">
                         {/* Timeline dot */}
@@ -154,7 +157,7 @@ const CupPage = () => {
                             <span className="font-semibold text-sm">{stage.name}</span>
                             {isCurrent && (
                               <span className="ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-500 text-white uppercase tracking-wide">
-                                Current
+                                Active
                               </span>
                             )}
                           </div>

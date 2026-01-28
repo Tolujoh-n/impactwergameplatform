@@ -316,6 +316,19 @@ router.post('/polls/:id/liquidity', async (req, res) => {
   }
 });
 
+// Delete Poll
+router.delete('/polls/:id', async (req, res) => {
+  try {
+    const poll = await Poll.findByIdAndDelete(req.params.id);
+    if (!poll) {
+      return res.status(404).json({ message: 'Poll not found' });
+    }
+    res.json({ message: 'Poll deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Resolve Poll
 router.post('/polls/:id/resolve', async (req, res) => {
   try {

@@ -214,6 +214,16 @@ const Admin = () => {
     }
   };
 
+  const handleDeletePoll = async (pollId) => {
+    try {
+      await api.delete(`/admin/polls/${pollId}`);
+      fetchData();
+      showNotification('Poll deleted successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to delete poll', 'error');
+    }
+  };
+
   const handleCreateCup = async (cupData) => {
     try {
       await api.post('/admin/cups', cupData);
@@ -316,6 +326,7 @@ const Admin = () => {
             onUpdatePoll={handleUpdatePoll}
             onUpdatePollStatus={handleUpdatePollStatus}
             onAddLiquidity={handleAddPollLiquidity}
+            onDeletePoll={handleDeletePoll}
           />
         )}
         {activeTab === 'cups' && (
@@ -617,49 +628,71 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
             <option key={cup._id} value={cup._id}>{cup.name}</option>
           ))}
         </select>
-        {formData.cup && availableStages.length > 0 ? (
-          <select
-            value={formData.stage}
-            onChange={(e) => {
-              const selectedStage = availableStages.find(s => s._id === e.target.value);
-              setFormData({ ...formData, stage: e.target.value, stageName: selectedStage?.name || '' });
-            }}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-          >
-            <option value="">Select Stage (optional)</option>
-            {availableStages.map((stage) => (
-              <option key={stage._id} value={stage._id}>{stage.name}</option>
-            ))}
-          </select>
-        ) : formData.cup ? (
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            No stages found for this cup. Create stages in the Stages tab first.
+        
+        {/* Stage Selection - Always show when cup is selected */}
+        {formData.cup && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Stage <span className="text-gray-500">(optional)</span>
+            </label>
+            {availableStages.length > 0 ? (
+              <select
+                value={formData.stage}
+                onChange={(e) => {
+                  const selectedStage = availableStages.find(s => s._id === e.target.value);
+                  setFormData({ ...formData, stage: e.target.value, stageName: selectedStage?.name || '' });
+                }}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">Select Stage (optional)</option>
+                {availableStages.map((stage) => (
+                  <option key={stage._id} value={stage._id}>{stage.name}</option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400 mb-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
+                  No stages found for this cup. Create stages in the Stages tab first.
+                </div>
+                <input
+                  type="text"
+                  placeholder="Or enter a custom stage name"
+                  value={formData.stageName}
+                  onChange={(e) => setFormData({ ...formData, stageName: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+              </>
+            )}
+            {formData.stage && availableStages.length > 0 && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Selected: {availableStages.find(s => s._id === formData.stage)?.name}
+              </p>
+            )}
           </div>
-        ) : null}
-        {!formData.stage && (
-          <input
-            type="text"
-            placeholder="Stage Name (optional, if no stage selected)"
-            value={formData.stageName}
-            onChange={(e) => setFormData({ ...formData, stageName: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-          />
         )}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <input
             type="number"
             step="0.01"
-            placeholder="Market YES Liquidity (ETH)"
-            value={formData.marketYesLiquidity}
-            onChange={(e) => setFormData({ ...formData, marketYesLiquidity: e.target.value })}
+            placeholder="Team A Initial Liquidity (ETH)"
+            value={formData.marketTeamALiquidity}
+            onChange={(e) => setFormData({ ...formData, marketTeamALiquidity: e.target.value })}
             className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
           <input
             type="number"
             step="0.01"
-            placeholder="Market NO Liquidity (ETH)"
-            value={formData.marketNoLiquidity}
-            onChange={(e) => setFormData({ ...formData, marketNoLiquidity: e.target.value })}
+            placeholder="Team B Initial Liquidity (ETH)"
+            value={formData.marketTeamBLiquidity}
+            onChange={(e) => setFormData({ ...formData, marketTeamBLiquidity: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          />
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Draw Initial Liquidity (ETH)"
+            value={formData.marketDrawLiquidity}
+            onChange={(e) => setFormData({ ...formData, marketDrawLiquidity: e.target.value })}
             className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
         </div>
@@ -787,12 +820,13 @@ const StatusModal = ({ match, onClose, onSubmit }) => {
   );
 };
 
-const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, onUpdatePoll, onUpdatePollStatus, onAddLiquidity }) => {
+const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, onUpdatePoll, onUpdatePollStatus, onAddLiquidity, onDeletePoll }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
   const [showEditModal, setShowEditModal] = useState(null);
   const [showStatusModal, setShowStatusModal] = useState(null);
   const [showLiquidityModal, setShowLiquidityModal] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(null);
 
   if (loading) return <div className="text-center py-12">Loading...</div>;
 
@@ -869,6 +903,12 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
                           Resolve
                         </button>
                       )}
+                      <button
+                        onClick={() => setShowDeleteModal(poll)}
+                        className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -930,6 +970,33 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
             setShowLiquidityModal(null);
           }}
         />
+      )}
+
+      {showDeleteModal && (
+        <Modal isOpen={true} onClose={() => setShowDeleteModal(null)} title="Delete Poll">
+          <div className="space-y-4">
+            <p className="text-gray-700 dark:text-gray-300">
+              Are you sure you want to delete <strong>{showDeleteModal.question}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  onDeletePoll(showDeleteModal._id);
+                  setShowDeleteModal(null);
+                }}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(null)}
+                className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -2088,7 +2155,7 @@ const AddLiquidityModal = ({ match, onClose, onSubmit }) => {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Team A Liquidity (ETH)
+            {match.teamA} Liquidity (ETH)
           </label>
           <input
             type="number"
@@ -2101,7 +2168,7 @@ const AddLiquidityModal = ({ match, onClose, onSubmit }) => {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Team B Liquidity (ETH)
+            {match.teamB} Liquidity (ETH)
           </label>
           <input
             type="number"

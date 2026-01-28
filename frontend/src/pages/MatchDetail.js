@@ -713,8 +713,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
+                      title={`${item.teamA} Win`}
                     >
-                      {item.teamA}
+                      <div className="truncate">{item.teamA}</div>
                       <div className="text-xs mt-1">{(prices.teamA * 100).toFixed(1)}%</div>
                     </button>
                     <button
@@ -735,8 +736,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                           ? 'bg-red-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
+                      title={`${item.teamB} Win`}
                     >
-                      {item.teamB}
+                      <div className="truncate">{item.teamB}</div>
                       <div className="text-xs mt-1">{(prices.teamB * 100).toFixed(1)}%</div>
                     </button>
                   </div>
@@ -774,7 +776,12 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                     : 'bg-red-500 hover:bg-red-600 text-white'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                {tradeType === 'buy' ? 'Buy' : 'Sell'} {selectedOption?.toUpperCase() || ''}
+                {tradeType === 'buy' ? 'Buy' : 'Sell'}{' '}
+                {selectedOption === 'yes' ? 'YES' :
+                 selectedOption === 'no' ? 'NO' :
+                 selectedOption === 'teamA' ? item.teamA :
+                 selectedOption === 'teamB' ? item.teamB :
+                 selectedOption === 'draw' ? 'Draw' : ''}
               </button>
 
               {/* User Holdings */}
