@@ -15,8 +15,11 @@ contract WeRgame {
     uint256 public marketPlatformFee; // For market layer
     uint256 public freeJackpotFee; // Free jackpot fee
     
-    // Market structure
-    struct Market {
+    // Market type enum
+    enum MarketType { Poll, Match }
+    
+    // Market structure for Polls (YES/NO)
+    struct PollMarket {
         uint256 marketId;
         bool initialized;
         uint256 yesShares;
@@ -25,6 +28,20 @@ contract WeRgame {
         uint256 initialNoLiquidity;
         bool settled;
         bool outcome; // true = YES won, false = NO won
+    }
+    
+    // Market structure for Matches (TeamA/TeamB/Draw)
+    struct MatchMarket {
+        uint256 marketId;
+        bool initialized;
+        uint256 teamAShares;
+        uint256 teamBShares;
+        uint256 drawShares;
+        uint256 initialTeamALiquidity;
+        uint256 initialTeamBLiquidity;
+        uint256 initialDrawLiquidity;
+        bool settled;
+        uint8 outcome; // 0 = TeamA, 1 = TeamB, 2 = Draw
     }
     
     // Boost prediction structure
@@ -44,18 +61,34 @@ contract WeRgame {
         uint256 shares;
     }
     
-    mapping(uint256 => Market) public markets;
+    mapping(uint256 => PollMarket) public pollMarkets;
+    mapping(uint256 => MatchMarket) public matchMarkets;
+    mapping(uint256 => MarketType) public marketTypes; // Track market type
     mapping(uint256 => BoostPrediction[]) public boostPredictions;
-    mapping(address => mapping(uint256 => MarketPosition)) public marketPositions;
+    mapping(address => mapping(uint256 => MarketPosition)) public pollMarketPositions;
+    mapping(address => mapping(uint256 => MatchMarketPosition)) public matchMarketPositions;
     mapping(uint256 => mapping(address => uint256)) public claimableBalances;
     
     uint256 public marketCounter;
     
-    event MarketCreated(uint256 indexed marketId, uint256 initialYesLiquidity, uint256 initialNoLiquidity);
-    event LiquidityAdded(uint256 indexed marketId, uint256 yesAmount, uint256 noAmount);
-    event SharesBought(uint256 indexed marketId, address indexed buyer, bool side, uint256 amount, uint256 shares);
-    event SharesSold(uint256 indexed marketId, address indexed seller, bool side, uint256 shares, uint256 amount);
-    event MarketSettled(uint256 indexed marketId, bool outcome);
+    // Match market position structure
+    struct MatchMarketPosition {
+        address user;
+        uint256 marketId;
+        uint8 side; // 0 = TeamA, 1 = TeamB, 2 = Draw
+        uint256 shares;
+    }
+    
+    event PollMarketCreated(uint256 indexed marketId, uint256 initialYesLiquidity, uint256 initialNoLiquidity);
+    event MatchMarketCreated(uint256 indexed marketId, uint256 initialTeamALiquidity, uint256 initialTeamBLiquidity, uint256 initialDrawLiquidity);
+    event PollLiquidityAdded(uint256 indexed marketId, uint256 yesAmount, uint256 noAmount);
+    event MatchLiquidityAdded(uint256 indexed marketId, uint256 teamAAmount, uint256 teamBAmount, uint256 drawAmount);
+    event PollSharesBought(uint256 indexed marketId, address indexed buyer, bool side, uint256 amount, uint256 shares);
+    event MatchSharesBought(uint256 indexed marketId, address indexed buyer, uint8 side, uint256 amount, uint256 shares);
+    event PollSharesSold(uint256 indexed marketId, address indexed seller, bool side, uint256 shares, uint256 amount);
+    event MatchSharesSold(uint256 indexed marketId, address indexed seller, uint8 side, uint256 shares, uint256 amount);
+    event PollMarketSettled(uint256 indexed marketId, bool outcome);
+    event MatchMarketSettled(uint256 indexed marketId, uint8 outcome);
     event FundsClaimed(uint256 indexed marketId, address indexed user, uint256 amount);
     event BoostPredictionMade(uint256 indexed matchId, address indexed user, bool outcome, uint256 amount);
     event FeesUpdated(uint256 platformFee, uint256 boostJackpotFee, uint256 marketPlatformFee, uint256 freeJackpotFee);
@@ -142,9 +175,9 @@ contract WeRgame {
     }
     
     /**
-     * @notice Create a new market with initial liquidity
+     * @notice Create a new poll market (YES/NO) with initial liquidity
      */
-    function createMarket(uint256 _initialYesLiquidity, uint256 _initialNoLiquidity) 
+    function createPollMarket(uint256 _initialYesLiquidity, uint256 _initialNoLiquidity) 
         external 
         onlyDeployer 
         returns (uint256) 
@@ -152,7 +185,8 @@ contract WeRgame {
         require(_initialYesLiquidity > 0 && _initialNoLiquidity > 0, "Invalid liquidity");
         
         uint256 marketId = marketCounter++;
-        markets[marketId] = Market({
+        marketTypes[marketId] = MarketType.Poll;
+        pollMarkets[marketId] = PollMarket({
             marketId: marketId,
             initialized: true,
             yesShares: _initialYesLiquidity,
@@ -163,19 +197,49 @@ contract WeRgame {
             outcome: false
         });
         
-        emit MarketCreated(marketId, _initialYesLiquidity, _initialNoLiquidity);
+        emit PollMarketCreated(marketId, _initialYesLiquidity, _initialNoLiquidity);
         return marketId;
     }
     
     /**
-     * @notice Add liquidity to an existing market
+     * @notice Create a new match market (TeamA/TeamB/Draw) with initial liquidity
      */
-    function addLiquidity(uint256 marketId, uint256 yesAmount, uint256 noAmount) 
+    function createMatchMarket(uint256 _initialTeamALiquidity, uint256 _initialTeamBLiquidity, uint256 _initialDrawLiquidity) 
+        external 
+        onlyDeployer 
+        returns (uint256) 
+    {
+        require(_initialTeamALiquidity > 0 && _initialTeamBLiquidity > 0 && _initialDrawLiquidity > 0, "Invalid liquidity");
+        
+        uint256 marketId = marketCounter++;
+        marketTypes[marketId] = MarketType.Match;
+        matchMarkets[marketId] = MatchMarket({
+            marketId: marketId,
+            initialized: true,
+            teamAShares: _initialTeamALiquidity,
+            teamBShares: _initialTeamBLiquidity,
+            drawShares: _initialDrawLiquidity,
+            initialTeamALiquidity: _initialTeamALiquidity,
+            initialTeamBLiquidity: _initialTeamBLiquidity,
+            initialDrawLiquidity: _initialDrawLiquidity,
+            settled: false,
+            outcome: 0
+        });
+        
+        emit MatchMarketCreated(marketId, _initialTeamALiquidity, _initialTeamBLiquidity, _initialDrawLiquidity);
+        return marketId;
+    }
+    
+    /**
+     * @notice Add liquidity to a poll market
+     */
+    function addPollLiquidity(uint256 marketId, uint256 yesAmount, uint256 noAmount) 
         external 
         payable 
         onlyDeployer 
     {
-        Market storage market = markets[marketId];
+        require(marketTypes[marketId] == MarketType.Poll, "Not a poll market");
+        PollMarket storage market = pollMarkets[marketId];
         require(market.initialized && !market.settled, "Market not available");
         require(msg.value >= yesAmount + noAmount, "Insufficient funds");
         
@@ -184,15 +248,38 @@ contract WeRgame {
         market.initialYesLiquidity += yesAmount;
         market.initialNoLiquidity += noAmount;
         
-        emit LiquidityAdded(marketId, yesAmount, noAmount);
+        emit PollLiquidityAdded(marketId, yesAmount, noAmount);
     }
     
     /**
-     * @notice Buy shares in a market (Fixed-Sum AMM)
-     * Price = shares / total shares
+     * @notice Add liquidity to a match market
      */
-    function buyShares(uint256 marketId, bool side) external payable {
-        Market storage market = markets[marketId];
+    function addMatchLiquidity(uint256 marketId, uint256 teamAAmount, uint256 teamBAmount, uint256 drawAmount) 
+        external 
+        payable 
+        onlyDeployer 
+    {
+        require(marketTypes[marketId] == MarketType.Match, "Not a match market");
+        MatchMarket storage market = matchMarkets[marketId];
+        require(market.initialized && !market.settled, "Market not available");
+        require(msg.value >= teamAAmount + teamBAmount + drawAmount, "Insufficient funds");
+        
+        market.teamAShares += teamAAmount;
+        market.teamBShares += teamBAmount;
+        market.drawShares += drawAmount;
+        market.initialTeamALiquidity += teamAAmount;
+        market.initialTeamBLiquidity += teamBAmount;
+        market.initialDrawLiquidity += drawAmount;
+        
+        emit MatchLiquidityAdded(marketId, teamAAmount, teamBAmount, drawAmount);
+    }
+    
+    /**
+     * @notice Buy shares in a poll market (YES/NO)
+     */
+    function buyPollShares(uint256 marketId, bool side) external payable {
+        require(marketTypes[marketId] == MarketType.Poll, "Not a poll market");
+        PollMarket storage market = pollMarkets[marketId];
         require(market.initialized && !market.settled, "Market not available");
         require(msg.value > 0, "Must send ETH");
         
@@ -209,12 +296,8 @@ contract WeRgame {
             market.noShares += shares;
         }
         
-        // Calculate platform fee (5% for market)
-        uint256 fee = (msg.value * marketPlatformFee) / 10000;
-        uint256 freeJackpotFeeAmount = (msg.value * freeJackpotFee) / 10000;
-        
         // Update user position
-        MarketPosition storage position = marketPositions[msg.sender][marketId];
+        MarketPosition storage position = pollMarketPositions[msg.sender][marketId];
         if (position.shares == 0) {
             position.user = msg.sender;
             position.marketId = marketId;
@@ -222,15 +305,55 @@ contract WeRgame {
         }
         position.shares += shares;
         
-        emit SharesBought(marketId, msg.sender, side, msg.value, shares);
+        emit PollSharesBought(marketId, msg.sender, side, msg.value, shares);
     }
     
     /**
-     * @notice Sell shares in a market
+     * @notice Buy shares in a match market (TeamA/TeamB/Draw)
+     * @param side 0 = TeamA, 1 = TeamB, 2 = Draw
      */
-    function sellShares(uint256 marketId, uint256 shares) external {
-        Market storage market = markets[marketId];
-        MarketPosition storage position = marketPositions[msg.sender][marketId];
+    function buyMatchShares(uint256 marketId, uint8 side) external payable {
+        require(marketTypes[marketId] == MarketType.Match, "Not a match market");
+        require(side < 3, "Invalid side");
+        MatchMarket storage market = matchMarkets[marketId];
+        require(market.initialized && !market.settled, "Market not available");
+        require(msg.value > 0, "Must send ETH");
+        
+        uint256 totalShares = market.teamAShares + market.teamBShares + market.drawShares;
+        require(totalShares > 0, "Market not initialized");
+        
+        // Calculate shares using fixed-sum AMM formula
+        uint256 shares;
+        if (side == 0) { // TeamA
+            shares = (msg.value * market.teamAShares) / (totalShares + msg.value);
+            market.teamAShares += shares;
+        } else if (side == 1) { // TeamB
+            shares = (msg.value * market.teamBShares) / (totalShares + msg.value);
+            market.teamBShares += shares;
+        } else { // Draw
+            shares = (msg.value * market.drawShares) / (totalShares + msg.value);
+            market.drawShares += shares;
+        }
+        
+        // Update user position
+        MatchMarketPosition storage position = matchMarketPositions[msg.sender][marketId];
+        if (position.shares == 0) {
+            position.user = msg.sender;
+            position.marketId = marketId;
+            position.side = side;
+        }
+        position.shares += shares;
+        
+        emit MatchSharesBought(marketId, msg.sender, side, msg.value, shares);
+    }
+    
+    /**
+     * @notice Sell shares in a poll market
+     */
+    function sellPollShares(uint256 marketId, uint256 shares) external {
+        require(marketTypes[marketId] == MarketType.Poll, "Not a poll market");
+        PollMarket storage market = pollMarkets[marketId];
+        MarketPosition storage position = pollMarketPositions[msg.sender][marketId];
         
         require(market.initialized && !market.settled, "Market not available");
         require(position.shares >= shares, "Insufficient shares");
@@ -256,7 +379,45 @@ contract WeRgame {
         position.shares -= shares;
         
         payable(msg.sender).transfer(netPayout);
-        emit SharesSold(marketId, msg.sender, position.side, shares, netPayout);
+        emit PollSharesSold(marketId, msg.sender, position.side, shares, netPayout);
+    }
+    
+    /**
+     * @notice Sell shares in a match market
+     */
+    function sellMatchShares(uint256 marketId, uint256 shares) external {
+        require(marketTypes[marketId] == MarketType.Match, "Not a match market");
+        MatchMarket storage market = matchMarkets[marketId];
+        MatchMarketPosition storage position = matchMarketPositions[msg.sender][marketId];
+        
+        require(market.initialized && !market.settled, "Market not available");
+        require(position.shares >= shares, "Insufficient shares");
+        
+        uint256 totalShares = market.teamAShares + market.teamBShares + market.drawShares;
+        require(totalShares > 0, "Market not initialized");
+        
+        // Calculate payout using fixed-sum AMM formula
+        uint256 payout;
+        if (position.side == 0) { // Selling TeamA
+            market.teamAShares -= shares;
+            payout = (shares * totalShares) / (market.teamAShares + market.teamBShares + market.drawShares + shares);
+        } else if (position.side == 1) { // Selling TeamB
+            market.teamBShares -= shares;
+            payout = (shares * totalShares) / (market.teamAShares + market.teamBShares + market.drawShares + shares);
+        } else { // Selling Draw
+            market.drawShares -= shares;
+            payout = (shares * totalShares) / (market.teamAShares + market.teamBShares + market.drawShares + shares);
+        }
+        
+        // Apply fees
+        uint256 fee = (payout * marketPlatformFee) / 10000;
+        uint256 freeJackpotFeeAmount = (payout * freeJackpotFee) / 10000;
+        uint256 netPayout = payout - fee - freeJackpotFeeAmount;
+        
+        position.shares -= shares;
+        
+        payable(msg.sender).transfer(netPayout);
+        emit MatchSharesSold(marketId, msg.sender, position.side, shares, netPayout);
     }
     
     /**
@@ -277,16 +438,33 @@ contract WeRgame {
     }
     
     /**
-     * @notice Settle a market (set outcome)
+     * @notice Settle a poll market (set outcome)
      */
-    function settleMarket(uint256 marketId, bool outcome) external onlyDeployer {
-        Market storage market = markets[marketId];
+    function settlePollMarket(uint256 marketId, bool outcome) external onlyDeployer {
+        require(marketTypes[marketId] == MarketType.Poll, "Not a poll market");
+        PollMarket storage market = pollMarkets[marketId];
         require(market.initialized && !market.settled, "Market already settled");
         
         market.settled = true;
         market.outcome = outcome;
         
-        emit MarketSettled(marketId, outcome);
+        emit PollMarketSettled(marketId, outcome);
+    }
+    
+    /**
+     * @notice Settle a match market (set outcome)
+     * @param outcome 0 = TeamA, 1 = TeamB, 2 = Draw
+     */
+    function settleMatchMarket(uint256 marketId, uint8 outcome) external onlyDeployer {
+        require(marketTypes[marketId] == MarketType.Match, "Not a match market");
+        require(outcome < 3, "Invalid outcome");
+        MatchMarket storage market = matchMarkets[marketId];
+        require(market.initialized && !market.settled, "Market already settled");
+        
+        market.settled = true;
+        market.outcome = outcome;
+        
+        emit MatchMarketSettled(marketId, outcome);
     }
     
     /**
@@ -335,10 +513,10 @@ contract WeRgame {
     }
     
     /**
-     * @notice Get current price for a market side (in basis points)
+     * @notice Get current price for a poll market side (in basis points)
      */
-    function getPrice(uint256 marketId, bool side) external view returns (uint256) {
-        Market storage market = markets[marketId];
+    function getPollPrice(uint256 marketId, bool side) external view returns (uint256) {
+        PollMarket storage market = pollMarkets[marketId];
         if (!market.initialized) return 0;
         
         uint256 totalShares = market.yesShares + market.noShares;
@@ -352,14 +530,46 @@ contract WeRgame {
     }
     
     /**
-     * @notice Get user's market position
+     * @notice Get current price for a match market side (in basis points)
+     * @param side 0 = TeamA, 1 = TeamB, 2 = Draw
      */
-    function getUserPosition(uint256 marketId, address user) 
+    function getMatchPrice(uint256 marketId, uint8 side) external view returns (uint256) {
+        MatchMarket storage market = matchMarkets[marketId];
+        if (!market.initialized) return 0;
+        
+        uint256 totalShares = market.teamAShares + market.teamBShares + market.drawShares;
+        if (totalShares == 0) return 3333; // ~33% if no shares
+        
+        if (side == 0) {
+            return (market.teamAShares * 10000) / totalShares;
+        } else if (side == 1) {
+            return (market.teamBShares * 10000) / totalShares;
+        } else {
+            return (market.drawShares * 10000) / totalShares;
+        }
+    }
+    
+    /**
+     * @notice Get user's poll market position
+     */
+    function getPollUserPosition(uint256 marketId, address user) 
         external 
         view 
         returns (bool side, uint256 shares) 
     {
-        MarketPosition storage position = marketPositions[user][marketId];
+        MarketPosition storage position = pollMarketPositions[user][marketId];
+        return (position.side, position.shares);
+    }
+    
+    /**
+     * @notice Get user's match market position
+     */
+    function getMatchUserPosition(uint256 marketId, address user) 
+        external 
+        view 
+        returns (uint8 side, uint256 shares) 
+    {
+        MatchMarketPosition storage position = matchMarketPositions[user][marketId];
         return (position.side, position.shares);
     }
     

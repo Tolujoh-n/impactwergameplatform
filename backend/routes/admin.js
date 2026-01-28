@@ -102,7 +102,7 @@ router.delete('/blogs/:id', async (req, res) => {
 // Create Match with liquidity
 router.post('/matches', async (req, res) => {
   try {
-    const { teamA, teamB, date, cup, stage, stageName, marketYesLiquidity, marketNoLiquidity, isFeatured } = req.body;
+    const { teamA, teamB, date, cup, stage, stageName, marketTeamALiquidity, marketTeamBLiquidity, marketDrawLiquidity, isFeatured } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -121,9 +121,10 @@ router.post('/matches', async (req, res) => {
       cup: cupDoc._id,
       stage: stageDoc?._id,
       stageName: stageDoc?.name || stageName,
-      marketYesLiquidity: marketYesLiquidity || 0,
-      marketNoLiquidity: marketNoLiquidity || 0,
-      marketInitialized: (marketYesLiquidity > 0 || marketNoLiquidity > 0),
+      marketTeamALiquidity: marketTeamALiquidity || 0,
+      marketTeamBLiquidity: marketTeamBLiquidity || 0,
+      marketDrawLiquidity: marketDrawLiquidity || 0,
+      marketInitialized: (marketTeamALiquidity > 0 || marketTeamBLiquidity > 0 || marketDrawLiquidity > 0),
       isFeatured: isFeatured || false,
     });
 
@@ -158,19 +159,33 @@ router.put('/matches/:id', async (req, res) => {
 // Add liquidity to match market
 router.post('/matches/:id/liquidity', async (req, res) => {
   try {
-    const { yesLiquidity, noLiquidity } = req.body;
+    const { teamALiquidity, teamBLiquidity, drawLiquidity } = req.body;
     const match = await Match.findById(req.params.id);
     
     if (!match) {
       return res.status(404).json({ message: 'Match not found' });
     }
 
-    match.marketYesLiquidity += yesLiquidity || 0;
-    match.marketNoLiquidity += noLiquidity || 0;
+    match.marketTeamALiquidity += teamALiquidity || 0;
+    match.marketTeamBLiquidity += teamBLiquidity || 0;
+    match.marketDrawLiquidity += drawLiquidity || 0;
     match.marketInitialized = true;
     
     await match.save();
     res.json(match);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete Match
+router.delete('/matches/:id', async (req, res) => {
+  try {
+    const match = await Match.findByIdAndDelete(req.params.id);
+    if (!match) {
+      return res.status(404).json({ message: 'Match not found' });
+    }
+    res.json({ message: 'Match deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -257,6 +272,20 @@ router.put('/polls/:id', async (req, res) => {
       new: true,
       runValidators: true,
     });
+    if (!poll) {
+      return res.status(404).json({ message: 'Poll not found' });
+    }
+    res.json(poll);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update Poll Status
+router.post('/polls/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const poll = await Poll.findByIdAndUpdate(req.params.id, { status }, { new: true });
     if (!poll) {
       return res.status(404).json({ message: 'Poll not found' });
     }

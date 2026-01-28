@@ -134,6 +134,26 @@ const Admin = () => {
     }
   };
 
+  const handleDeleteMatch = async (matchId) => {
+    try {
+      await api.delete(`/admin/matches/${matchId}`);
+      fetchData();
+      showNotification('Match deleted successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to delete match', 'error');
+    }
+  };
+
+  const handleAddMatchLiquidity = async (matchId, liquidity) => {
+    try {
+      await api.post(`/admin/matches/${matchId}/liquidity`, liquidity);
+      fetchData();
+      showNotification('Liquidity added successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to add liquidity', 'error');
+    }
+  };
+
   const handleResolveMatch = async (matchId, result) => {
     try {
       await api.post(`/admin/matches/${matchId}/resolve`, { result });
@@ -161,6 +181,36 @@ const Admin = () => {
       showNotification('Poll resolved successfully!', 'success');
     } catch (error) {
       showNotification(error.response?.data?.message || 'Failed to resolve poll', 'error');
+    }
+  };
+
+  const handleUpdatePoll = async (pollId, updates) => {
+    try {
+      await api.put(`/admin/polls/${pollId}`, updates);
+      fetchData();
+      showNotification('Poll updated successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to update poll', 'error');
+    }
+  };
+
+  const handleUpdatePollStatus = async (pollId, status) => {
+    try {
+      await api.post(`/admin/polls/${pollId}/status`, { status });
+      fetchData();
+      showNotification('Poll status updated successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to update poll status', 'error');
+    }
+  };
+
+  const handleAddPollLiquidity = async (pollId, liquidity) => {
+    try {
+      await api.post(`/admin/polls/${pollId}/liquidity`, liquidity);
+      fetchData();
+      showNotification('Liquidity added successfully!', 'success');
+    } catch (error) {
+      showNotification(error.response?.data?.message || 'Failed to add liquidity', 'error');
     }
   };
 
@@ -251,6 +301,8 @@ const Admin = () => {
             onUpdateMatch={handleUpdateMatch}
             onResolveMatch={handleResolveMatch}
             onUpdateStatus={handleUpdateStatus}
+            onDeleteMatch={handleDeleteMatch}
+            onAddLiquidity={handleAddMatchLiquidity}
           />
         )}
         {activeTab === 'polls' && (
@@ -261,6 +313,9 @@ const Admin = () => {
             loading={loading}
             onCreatePoll={handleCreatePoll}
             onResolvePoll={handleResolvePoll}
+            onUpdatePoll={handleUpdatePoll}
+            onUpdatePollStatus={handleUpdatePollStatus}
+            onAddLiquidity={handleAddPollLiquidity}
           />
         )}
         {activeTab === 'cups' && (
@@ -293,10 +348,13 @@ const Admin = () => {
   );
 };
 
-const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMatch, onResolveMatch, onUpdateStatus }) => {
+const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMatch, onResolveMatch, onUpdateStatus, onDeleteMatch, onAddLiquidity }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
   const [showStatusModal, setShowStatusModal] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [showLiquidityModal, setShowLiquidityModal] = useState(null);
 
   if (loading) {
     return <div className="text-center py-12">Loading...</div>;
@@ -346,21 +404,41 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {match.result || 'Pending'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  <button
-                    onClick={() => setShowStatusModal(match)}
-                    className="text-blue-600 hover:text-blue-900"
-                  >
-                    Update Status
-                  </button>
-                  {match.status === 'completed' && !match.isResolved && (
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => setShowResolveModal(match)}
-                      className="text-green-600 hover:text-green-900"
+                      onClick={() => setShowStatusModal(match)}
+                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
                     >
-                      Resolve
+                      Status
                     </button>
-                  )}
+                    <button
+                      onClick={() => setShowEditModal(match)}
+                      className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setShowLiquidityModal(match)}
+                      className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 text-xs"
+                    >
+                      Add Liquidity
+                    </button>
+                    {match.status === 'completed' && !match.isResolved && (
+                      <button
+                        onClick={() => setShowResolveModal(match)}
+                        className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
+                      >
+                        Resolve
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowDeleteModal(match)}
+                      className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -393,6 +471,57 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
           onSubmit={onUpdateStatus}
         />
       )}
+
+      {showEditModal && (
+        <EditMatchModal
+          match={showEditModal}
+          cups={cups}
+          stages={stages}
+          onClose={() => setShowEditModal(null)}
+          onSubmit={(updates) => {
+            onUpdateMatch(showEditModal._id, updates);
+            setShowEditModal(null);
+          }}
+        />
+      )}
+
+      {showDeleteModal && (
+        <Modal isOpen={true} onClose={() => setShowDeleteModal(null)} title="Delete Match">
+          <div className="space-y-4">
+            <p className="text-gray-700 dark:text-gray-300">
+              Are you sure you want to delete <strong>{showDeleteModal.teamA} vs {showDeleteModal.teamB}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  onDeleteMatch(showDeleteModal._id);
+                  setShowDeleteModal(null);
+                }}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(null)}
+                className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showLiquidityModal && (
+        <AddLiquidityModal
+          match={showLiquidityModal}
+          onClose={() => setShowLiquidityModal(null)}
+          onSubmit={(liquidity) => {
+            onAddLiquidity(showLiquidityModal._id, liquidity);
+            setShowLiquidityModal(null);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -405,8 +534,9 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
     cup: '',
     stage: '',
     stageName: '',
-    marketYesLiquidity: '',
-    marketNoLiquidity: '',
+    marketTeamALiquidity: '',
+    marketTeamBLiquidity: '',
+    marketDrawLiquidity: '',
     isFeatured: false,
   });
   const [availableStages, setAvailableStages] = useState([]);
@@ -439,8 +569,9 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
     onSubmit({
       ...formData,
       stageName: selectedStage?.name || formData.stageName,
-      marketYesLiquidity: parseFloat(formData.marketYesLiquidity) || 0,
-      marketNoLiquidity: parseFloat(formData.marketNoLiquidity) || 0,
+      marketTeamALiquidity: parseFloat(formData.marketTeamALiquidity) || 0,
+      marketTeamBLiquidity: parseFloat(formData.marketTeamBLiquidity) || 0,
+      marketDrawLiquidity: parseFloat(formData.marketDrawLiquidity) || 0,
     });
     onClose();
   };
@@ -656,9 +787,12 @@ const StatusModal = ({ match, onClose, onSubmit }) => {
   );
 };
 
-const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll }) => {
+const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, onUpdatePoll, onUpdatePollStatus, onAddLiquidity }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(null);
+  const [showStatusModal, setShowStatusModal] = useState(null);
+  const [showLiquidityModal, setShowLiquidityModal] = useState(null);
 
   if (loading) return <div className="text-center py-12">Loading...</div>;
 
@@ -707,15 +841,35 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll })
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {poll.result || 'Pending'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    {poll.status === 'settled' && !poll.isResolved && (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex flex-wrap gap-2">
                       <button
-                        onClick={() => setShowResolveModal(poll)}
-                        className="text-green-600 hover:text-green-900 dark:text-green-400"
+                        onClick={() => setShowStatusModal(poll)}
+                        className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
                       >
-                        Resolve
+                        Status
                       </button>
-                    )}
+                      <button
+                        onClick={() => setShowEditModal(poll)}
+                        className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => setShowLiquidityModal(poll)}
+                        className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 text-xs"
+                      >
+                        Add Liquidity
+                      </button>
+                      {poll.status === 'settled' && !poll.isResolved && (
+                        <button
+                          onClick={() => setShowResolveModal(poll)}
+                          className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
+                        >
+                          Resolve
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -744,6 +898,37 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll })
           type="poll"
           onClose={() => setShowResolveModal(null)}
           onSubmit={onResolvePoll}
+        />
+      )}
+
+      {showEditModal && (
+        <EditPollModal
+          poll={showEditModal}
+          cups={cups}
+          onClose={() => setShowEditModal(null)}
+          onSubmit={(updates) => {
+            onUpdatePoll(showEditModal._id, updates);
+            setShowEditModal(null);
+          }}
+        />
+      )}
+
+      {showStatusModal && (
+        <PollStatusModal
+          poll={showStatusModal}
+          onClose={() => setShowStatusModal(null)}
+          onSubmit={onUpdatePollStatus}
+        />
+      )}
+
+      {showLiquidityModal && (
+        <AddPollLiquidityModal
+          poll={showLiquidityModal}
+          onClose={() => setShowLiquidityModal(null)}
+          onSubmit={(liquidity) => {
+            onAddLiquidity(showLiquidityModal._id, liquidity);
+            setShowLiquidityModal(null);
+          }}
         />
       )}
     </div>
@@ -1769,6 +1954,355 @@ const SettingsTab = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+// Edit Match Modal
+const EditMatchModal = ({ match, cups, stages, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    teamA: match.teamA || '',
+    teamB: match.teamB || '',
+    date: match.date ? new Date(match.date).toISOString().slice(0, 16) : '',
+    cup: match.cup?._id || match.cup || '',
+    stage: match.stage?._id || match.stage || '',
+    stageName: match.stageName || '',
+    isFeatured: match.isFeatured || false,
+  });
+  const [availableStages, setAvailableStages] = useState([]);
+
+  useEffect(() => {
+    if (formData.cup) {
+      const selectedCup = cups.find(c => c._id === formData.cup || c.slug === formData.cup);
+      if (selectedCup) {
+        api.get(`/cups/${selectedCup.slug}/stages`)
+          .then(response => setAvailableStages(response.data))
+          .catch(() => setAvailableStages([]));
+      }
+    }
+  }, [formData.cup, cups]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const selectedStage = availableStages.find(s => s._id === formData.stage);
+    onSubmit({
+      ...formData,
+      stageName: selectedStage?.name || formData.stageName,
+    });
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Edit Match" size="lg">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <input
+            type="text"
+            placeholder="Team A"
+            value={formData.teamA}
+            onChange={(e) => setFormData({ ...formData, teamA: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            required
+          />
+          <input
+            type="text"
+            placeholder="Team B"
+            value={formData.teamB}
+            onChange={(e) => setFormData({ ...formData, teamB: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            required
+          />
+        </div>
+        <input
+          type="datetime-local"
+          value={formData.date}
+          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          required
+        />
+        <select
+          value={formData.cup}
+          onChange={(e) => setFormData({ ...formData, cup: e.target.value, stage: '' })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          required
+        >
+          <option value="">Select Cup</option>
+          {cups.map((cup) => (
+            <option key={cup._id} value={cup._id}>{cup.name}</option>
+          ))}
+        </select>
+        {formData.cup && availableStages.length > 0 && (
+          <select
+            value={formData.stage}
+            onChange={(e) => {
+              const selectedStage = availableStages.find(s => s._id === e.target.value);
+              setFormData({ ...formData, stage: e.target.value, stageName: selectedStage?.name || '' });
+            }}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          >
+            <option value="">Select Stage</option>
+            {availableStages.map((stage) => (
+              <option key={stage._id} value={stage._id}>{stage.name}</option>
+            ))}
+          </select>
+        )}
+        <label className="flex items-center">
+          <input
+            type="checkbox"
+            checked={formData.isFeatured}
+            onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
+            className="mr-2"
+          />
+          <span className="text-gray-700 dark:text-gray-300">Featured Match</span>
+        </label>
+        <div className="flex space-x-2">
+          <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+            Update
+          </button>
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// Add Liquidity Modal for Match
+const AddLiquidityModal = ({ match, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    teamALiquidity: '',
+    teamBLiquidity: '',
+    drawLiquidity: '',
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      teamALiquidity: parseFloat(formData.teamALiquidity) || 0,
+      teamBLiquidity: parseFloat(formData.teamBLiquidity) || 0,
+      drawLiquidity: parseFloat(formData.drawLiquidity) || 0,
+    });
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title={`Add Liquidity - ${match.teamA} vs ${match.teamB}`}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Team A Liquidity (ETH)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={formData.teamALiquidity}
+            onChange={(e) => setFormData({ ...formData, teamALiquidity: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            placeholder="0.0"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Team B Liquidity (ETH)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={formData.teamBLiquidity}
+            onChange={(e) => setFormData({ ...formData, teamBLiquidity: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            placeholder="0.0"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Draw Liquidity (ETH)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={formData.drawLiquidity}
+            onChange={(e) => setFormData({ ...formData, drawLiquidity: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            placeholder="0.0"
+          />
+        </div>
+        <div className="flex space-x-2">
+          <button type="submit" className="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600">
+            Add Liquidity
+          </button>
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// Edit Poll Modal
+const EditPollModal = ({ poll, cups, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    question: poll.question || '',
+    description: poll.description || '',
+    type: poll.type || 'match',
+    cup: poll.cup?._id || poll.cup || '',
+    isFeatured: poll.isFeatured || false,
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Edit Poll" size="lg">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <input
+          type="text"
+          placeholder="Question"
+          value={formData.question}
+          onChange={(e) => setFormData({ ...formData, question: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          required
+        />
+        <textarea
+          placeholder="Description"
+          value={formData.description}
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          rows="3"
+        />
+        <select
+          value={formData.type}
+          onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+        >
+          <option value="match">Match</option>
+          <option value="team">Team</option>
+          <option value="stage">Stage</option>
+          <option value="award">Award</option>
+        </select>
+        <select
+          value={formData.cup}
+          onChange={(e) => setFormData({ ...formData, cup: e.target.value })}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          required
+        >
+          <option value="">Select Cup</option>
+          {cups.map((cup) => (
+            <option key={cup._id} value={cup._id}>{cup.name}</option>
+          ))}
+        </select>
+        <label className="flex items-center">
+          <input
+            type="checkbox"
+            checked={formData.isFeatured}
+            onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
+            className="mr-2"
+          />
+          <span className="text-gray-700 dark:text-gray-300">Featured Poll</span>
+        </label>
+        <div className="flex space-x-2">
+          <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+            Update
+          </button>
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// Poll Status Modal
+const PollStatusModal = ({ poll, onClose, onSubmit }) => {
+  const [status, setStatus] = useState(poll.status);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(poll._id, status);
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Update Poll Status">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          required
+        >
+          <option value="upcoming">Upcoming</option>
+          <option value="active">Active</option>
+          <option value="settled">Settled</option>
+        </select>
+        <div className="flex space-x-2">
+          <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+            Update
+          </button>
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// Add Liquidity Modal for Poll
+const AddPollLiquidityModal = ({ poll, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    yesLiquidity: '',
+    noLiquidity: '',
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      yesLiquidity: parseFloat(formData.yesLiquidity) || 0,
+      noLiquidity: parseFloat(formData.noLiquidity) || 0,
+    });
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title={`Add Liquidity - ${poll.question}`}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            YES Liquidity (ETH)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={formData.yesLiquidity}
+            onChange={(e) => setFormData({ ...formData, yesLiquidity: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            placeholder="0.0"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            NO Liquidity (ETH)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={formData.noLiquidity}
+            onChange={(e) => setFormData({ ...formData, noLiquidity: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            placeholder="0.0"
+          />
+        </div>
+        <div className="flex space-x-2">
+          <button type="submit" className="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600">
+            Add Liquidity
+          </button>
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 };
 

@@ -45,19 +45,29 @@ const matchSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  marketYesShares: {
+  // Market shares for 3 outcomes (TeamA, TeamB, Draw)
+  marketTeamAShares: {
     type: Number,
     default: 0,
   },
-  marketNoShares: {
+  marketTeamBShares: {
     type: Number,
     default: 0,
   },
-  marketYesLiquidity: {
+  marketDrawShares: {
     type: Number,
     default: 0,
   },
-  marketNoLiquidity: {
+  // Market liquidity for 3 outcomes
+  marketTeamALiquidity: {
+    type: Number,
+    default: 0,
+  },
+  marketTeamBLiquidity: {
+    type: Number,
+    default: 0,
+  },
+  marketDrawLiquidity: {
     type: Number,
     default: 0,
   },
