@@ -5,6 +5,7 @@ import { initTheme, toggleTheme } from '../utils/theme';
 import api from '../utils/api';
 import LoginModal from './LoginModal';
 import SignupModal from './SignupModal';
+import logoImage from '../asset/logo.jpeg';
 
 const UserDropdown = ({ user, walletAddress, logout }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -193,9 +194,11 @@ const Navbar = () => {
           <div className="flex justify-between items-center h-16">
             {/* Logo and Name */}
             <Link to="/" className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-xl">W</span>
-              </div>
+              <img 
+                src={logoImage} 
+                alt="WeRgame Logo" 
+                className="h-10 w-auto object-contain"
+              />
               <span className="text-xl font-bold text-gray-900 dark:text-white">WeRgame</span>
             </Link>
 
@@ -365,12 +368,12 @@ const Navbar = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between h-12">
             <div className="flex items-center space-x-1 overflow-x-auto">
-              <Link
+              {/* <Link
                 to="/"
                 className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
               >
                 Home
-              </Link>
+              </Link> */}
               {navbarCups.map((cup) => (
                 <Link
                   key={cup._id}
