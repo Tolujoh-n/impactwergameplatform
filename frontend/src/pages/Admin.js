@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import { useNotification } from '../components/Notification';
 import Modal from '../components/Modal';
@@ -14,19 +14,7 @@ const Admin = () => {
   const [loading, setLoading] = useState(false);
   const { showNotification } = useNotification();
 
-  useEffect(() => {
-    fetchData();
-    if (activeTab === 'matches' || activeTab === 'polls' || activeTab === 'stages') {
-      fetchCups();
-      if (activeTab === 'stages') {
-        fetchAllStages();
-      } else {
-        fetchStages();
-      }
-    }
-  }, [activeTab]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'matches') {
@@ -50,22 +38,22 @@ const Admin = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, showNotification]);
 
-  const fetchCups = async () => {
+  const fetchCups = useCallback(async () => {
     try {
       const response = await api.get('/cups');
       setCups(response.data);
     } catch (error) {
       console.error('Error fetching cups:', error);
     }
-  };
+  }, []);
 
-  const fetchStages = async () => {
+  const fetchStages = useCallback(async (cupsData) => {
     try {
       // Fetch stages for all cups
       const allStages = [];
-      for (const cup of cups) {
+      for (const cup of cupsData) {
         const response = await api.get(`/cups/${cup.slug}/stages`);
         allStages.push(...response.data);
       }
@@ -73,16 +61,38 @@ const Admin = () => {
     } catch (error) {
       console.error('Error fetching stages:', error);
     }
-  };
+  }, []);
 
-  const fetchAllStages = async () => {
+  const fetchAllStages = useCallback(async () => {
     try {
       const response = await api.get('/stages');
       setStages(response.data);
     } catch (error) {
       console.error('Error fetching all stages:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    if (activeTab === 'matches' || activeTab === 'polls' || activeTab === 'stages') {
+      if (activeTab === 'stages') {
+        fetchAllStages();
+        fetchCups();
+      } else {
+        // For matches and polls, fetch cups first, then stages after cups are loaded
+        fetchCups().then(() => {
+          // This will be handled by the cups effect
+        });
+      }
+    }
+  }, [activeTab, fetchData, fetchAllStages, fetchCups]);
+
+  // Separate effect to fetch stages when cups change (for matches/polls tabs)
+  useEffect(() => {
+    if ((activeTab === 'matches' || activeTab === 'polls') && cups.length > 0) {
+      fetchStages(cups);
+    }
+  }, [cups, activeTab, fetchStages]);
 
   const handleCreateStage = async (stageData) => {
     try {
