@@ -769,7 +769,21 @@ const ResolveModal = ({ item, type, onClose, onSubmit }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(item._id, result);
+    // Map the display value to the backend expected value
+    let backendResult = result;
+    if (type === 'match') {
+      if (result === item.teamA) {
+        backendResult = 'teamA';
+      } else if (result === item.teamB) {
+        backendResult = 'teamB';
+      } else if (result === 'Draw') {
+        backendResult = 'draw';
+      }
+    } else {
+      // For polls, normalize to uppercase
+      backendResult = result.toUpperCase();
+    }
+    onSubmit(item._id, backendResult);
     onClose();
   };
 

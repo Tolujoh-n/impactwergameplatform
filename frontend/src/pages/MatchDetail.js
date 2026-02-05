@@ -666,6 +666,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
     if (user) {
       fetchUserMarketPrediction();
     }
+    
+    // Set up polling to refresh market data every 5 seconds
+    const interval = setInterval(() => {
+      fetchMarketData();
+      if (user) {
+        fetchUserMarketPrediction();
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, [item._id, user, isPoll]);
 
   const fetchMarketData = async () => {

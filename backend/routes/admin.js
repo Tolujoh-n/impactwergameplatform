@@ -346,12 +346,7 @@ router.delete('/matches/:id', async (req, res) => {
 // Resolve Match
 router.post('/matches/:id/resolve', async (req, res) => {
   try {
-    const { result } = req.body;
-    
-    // Validate result for match (must be one of: teamA, teamB, draw)
-    if (!['teamA', 'teamB', 'draw', 'TeamA', 'TeamB', 'Draw'].includes(result)) {
-      return res.status(400).json({ message: 'Invalid result. Must be teamA, teamB, or draw' });
-    }
+    let { result } = req.body;
     
     const match = await Match.findById(req.params.id);
     
@@ -359,9 +354,19 @@ router.post('/matches/:id/resolve', async (req, res) => {
       return res.status(404).json({ message: 'Match not found' });
     }
 
-    const normalizedResult = result.charAt(0).toUpperCase() + result.slice(1).toLowerCase();
-    if (normalizedResult === 'Teama') normalizedResult = 'TeamA';
-    if (normalizedResult === 'Teamb') normalizedResult = 'TeamB';
+    // Normalize result - accept teamA, teamB, draw (case-insensitive) or team names
+    const resultLower = result ? result.toLowerCase() : '';
+    let normalizedResult = '';
+    
+    if (resultLower === 'teama' || result === match.teamA) {
+      normalizedResult = 'TeamA';
+    } else if (resultLower === 'teamb' || result === match.teamB) {
+      normalizedResult = 'TeamB';
+    } else if (resultLower === 'draw' || result === 'Draw') {
+      normalizedResult = 'Draw';
+    } else {
+      return res.status(400).json({ message: 'Invalid result. Must be teamA, teamB, or draw' });
+    }
 
     match.result = normalizedResult;
     match.status = 'completed';

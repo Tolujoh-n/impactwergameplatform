@@ -634,26 +634,31 @@ router.get('/market/:itemId/data', async (req, res) => {
       prices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
     }
     
-    // Get recent trades (predictions)
-    const recentTrades = await Prediction.find({
+    // Get all market predictions to show trading activity
+    const allMarketPredictions = await Prediction.find({
       [type === 'match' ? 'match' : 'poll']: itemId,
       type: 'market',
     })
       .populate('user', 'username')
       .sort({ updatedAt: -1 })
-      .limit(50);
+      .limit(100); // Show up to 100 recent trades
+    
+    // Format trades for display - show each prediction as a buy trade
+    // When users sell, we could track that separately, but for now we show all market positions
+    const formattedTrades = allMarketPredictions.map(trade => ({
+      id: trade._id,
+      user: trade.user?.username || 'Unknown',
+      outcome: trade.outcome,
+      shares: trade.shares || 0,
+      totalInvested: trade.totalInvested || 0,
+      timestamp: trade.updatedAt || trade.createdAt,
+      type: 'buy', // All market predictions are purchases (sells reduce shares but don't create new predictions)
+    }));
     
     res.json({
       prices,
       totalLiquidity,
-      recentTrades: recentTrades.map(trade => ({
-        id: trade._id,
-        user: trade.user.username,
-        outcome: trade.outcome,
-        shares: trade.shares,
-        totalInvested: trade.totalInvested,
-        timestamp: trade.updatedAt || trade.createdAt,
-      })),
+      recentTrades: formattedTrades,
       item: {
         id: item._id,
         status: item.status,
