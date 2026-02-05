@@ -438,6 +438,39 @@ contract WeRgame {
     }
     
     /**
+     * @notice Add stake to existing boost prediction
+     */
+    function addBoostStake(uint256 matchId, uint256 predictionIndex) external payable {
+        require(msg.value > 0, "Must send ETH");
+        require(predictionIndex < boostPredictions[matchId].length, "Invalid prediction index");
+        
+        BoostPrediction storage prediction = boostPredictions[matchId][predictionIndex];
+        require(prediction.user == msg.sender, "Not your prediction");
+        require(!prediction.claimed, "Already claimed");
+        
+        prediction.amount += msg.value;
+        
+        emit BoostPredictionMade(matchId, msg.sender, prediction.outcome, msg.value);
+    }
+    
+    /**
+     * @notice Withdraw stake from existing boost prediction
+     */
+    function withdrawBoostStake(uint256 matchId, uint256 predictionIndex, uint256 amount) external {
+        require(predictionIndex < boostPredictions[matchId].length, "Invalid prediction index");
+        
+        BoostPrediction storage prediction = boostPredictions[matchId][predictionIndex];
+        require(prediction.user == msg.sender, "Not your prediction");
+        require(!prediction.claimed, "Already claimed");
+        require(amount > 0 && amount <= prediction.amount, "Invalid amount");
+        
+        prediction.amount -= amount;
+        payable(msg.sender).transfer(amount);
+        
+        emit BoostPredictionMade(matchId, msg.sender, prediction.outcome, amount);
+    }
+    
+    /**
      * @notice Settle a poll market (set outcome)
      */
     function settlePollMarket(uint256 marketId, bool outcome) external onlyDeployer {

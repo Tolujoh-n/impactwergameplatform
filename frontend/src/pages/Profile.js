@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 
 const Profile = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [profileData, setProfileData] = useState(null);
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState('all'); // 'all', 'free', 'boost', 'market'
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'pending', 'won', 'lost', 'settled'
 
   useEffect(() => {
     if (user) {
@@ -61,6 +64,38 @@ const Profile = () => {
   const freePredictions = predictions.filter(p => p.type === 'free');
   const boostPredictions = predictions.filter(p => p.type === 'boost');
   const marketPredictions = predictions.filter(p => p.type === 'market');
+
+  // Filter predictions
+  const filteredPredictions = predictions.filter(p => {
+    if (filterType !== 'all' && p.type !== filterType) return false;
+    if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+    return true;
+  });
+
+  const handleRowClick = (prediction) => {
+    if (prediction.match) {
+      navigate(`/match/${prediction.match._id || prediction.match}/${prediction.type}`);
+    } else if (prediction.poll) {
+      navigate(`/poll/${prediction.poll._id || prediction.poll}/${prediction.type}`);
+    }
+  };
+
+  const getOutcome = (prediction) => {
+    if (prediction.match) {
+      const match = prediction.match;
+      if (match.isResolved && match.result) {
+        return match.result;
+      }
+      return 'Not Resolved';
+    } else if (prediction.poll) {
+      const poll = prediction.poll;
+      if (poll.isResolved && poll.result) {
+        return poll.result;
+      }
+      return 'Not Resolved';
+    }
+    return 'N/A';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
@@ -186,8 +221,35 @@ const Profile = () => {
 
         {/* Recent Predictions */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Recent Predictions</h2>
-          {predictions.length > 0 ? (
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Recent Predictions</h2>
+            <div className="flex gap-2">
+              {/* Type Filter */}
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+              >
+                <option value="all">All Types</option>
+                <option value="free">Free</option>
+                <option value="boost">Boost</option>
+                <option value="market">Market</option>
+              </select>
+              {/* Status Filter */}
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+                <option value="settled">Settled</option>
+              </select>
+            </div>
+          </div>
+          {filteredPredictions.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700">
@@ -195,13 +257,18 @@ const Profile = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Match/Poll</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Prediction</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Outcome</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Date</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {predictions.slice(0, 10).map((prediction) => (
-                    <tr key={prediction._id}>
+                  {filteredPredictions.map((prediction) => (
+                    <tr 
+                      key={prediction._id}
+                      onClick={() => handleRowClick(prediction)}
+                      className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 rounded-full text-xs ${
                           prediction.type === 'free' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
@@ -218,6 +285,9 @@ const Profile = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                         {prediction.outcome}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                        {getOutcome(prediction)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 rounded-full text-xs ${
@@ -239,7 +309,9 @@ const Profile = () => {
             </div>
           ) : (
             <div className="text-center py-8 text-gray-600 dark:text-gray-400">
-              No predictions yet. Start predicting to see your history here!
+              {predictions.length === 0 
+                ? 'No predictions yet. Start predicting to see your history here!'
+                : 'No predictions match the selected filters.'}
             </div>
           )}
         </div>

@@ -240,13 +240,20 @@ const MatchCard = ({ match, featured = false }) => {
             {new Date(match.date).toLocaleDateString()} • {match.stageName}
           </p>
         </div>
-        <span className={`px-3 py-1 rounded-full text-sm ${
-          match.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
-          match.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
-          'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-        }`}>
-          {match.status}
-        </span>
+        <div className="flex items-center gap-2">
+          {match.isResolved && (
+            <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
+              RESOLVED
+            </span>
+          )}
+          <span className={`px-3 py-1 rounded-full text-sm ${
+            match.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+            match.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+            'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+          }`}>
+            {match.status}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center space-x-2">
@@ -276,9 +283,16 @@ const MatchCard = ({ match, featured = false }) => {
 const PollCard = ({ poll }) => {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-        {poll.question}
-      </h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+          {poll.question}
+        </h3>
+        {poll.isResolved && (
+          <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
+            RESOLVED
+          </span>
+        )}
+      </div>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         {poll.description}
       </p>

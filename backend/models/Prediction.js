@@ -27,6 +27,21 @@ const predictionSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // For boost: track total stake (can be increased/decreased)
+  totalStake: {
+    type: Number,
+    default: 0,
+  },
+  // For market: track shares owned
+  shares: {
+    type: Number,
+    default: 0,
+  },
+  // For market: track total invested
+  totalInvested: {
+    type: Number,
+    default: 0,
+  },
   status: {
     type: String,
     enum: ['pending', 'won', 'lost', 'settled'],
@@ -37,6 +52,10 @@ const predictionSchema = new mongoose.Schema({
     default: 0,
   },
   createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
     type: Date,
     default: Date.now,
   },

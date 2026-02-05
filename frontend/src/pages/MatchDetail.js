@@ -63,29 +63,61 @@ const MatchDetail = () => {
     }
 
     try {
+      // Check if prediction exists and item is still upcoming
+      const item = match || poll;
+      const canUpdate = prediction && item && (item.status === 'upcoming' || item.status === 'active');
+      
       if (type === 'free') {
-        await api.post('/predictions/free', {
-          [isPoll ? 'pollId' : 'matchId']: itemId,
-          outcome,
-          type: 'free',
-        });
-        showNotification('Free prediction submitted successfully!', 'success');
-      } else if (type === 'boost') {
-        if (!amount) {
-          showNotification('Please enter an amount to stake', 'warning');
-          return;
+        if (canUpdate) {
+          // Update existing prediction
+          await api.put(`/predictions/${prediction._id}`, { outcome });
+          showNotification('Prediction updated successfully!', 'success');
+        } else {
+          // Create new prediction
+          await api.post('/predictions/free', {
+            [isPoll ? 'pollId' : 'matchId']: itemId,
+            outcome,
+            type: 'free',
+          });
+          showNotification('Free prediction submitted successfully!', 'success');
         }
-        await api.post('/predictions/boost', {
-          [isPoll ? 'pollId' : 'matchId']: itemId,
-          outcome,
-          amount: parseFloat(amount),
-          type: 'boost',
-        });
-        showNotification('Boost prediction submitted successfully!', 'success');
+      } else if (type === 'boost') {
+        if (canUpdate) {
+          // Update existing prediction - amount is automatically preserved
+          await api.put(`/predictions/${prediction._id}`, { outcome });
+          showNotification('Prediction updated successfully! Your stake amount has been preserved.', 'success');
+        } else {
+          // Create new prediction - amount is required
+          if (!amount) {
+            showNotification('Please enter an amount to stake', 'warning');
+            return;
+          }
+          await api.post('/predictions/boost', {
+            [isPoll ? 'pollId' : 'matchId']: itemId,
+            outcome,
+            amount: parseFloat(amount),
+            type: 'boost',
+          });
+          showNotification('Boost prediction submitted successfully!', 'success');
+        }
       }
       await fetchUserPrediction();
     } catch (error) {
       showNotification(error.response?.data?.message || 'Failed to submit prediction', 'error');
+    }
+  };
+
+  const handleStakeAction = async (predictionId, action, amount) => {
+    try {
+      await api.post(`/predictions/boost/${predictionId}/stake`, {
+        action, // 'add' or 'withdraw'
+        amount: parseFloat(amount),
+      });
+      showNotification(`Stake ${action === 'add' ? 'added' : 'withdrawn'} successfully!`, 'success');
+      await fetchUserPrediction();
+      await fetchData(); // Refresh match/poll data to update boost pool
+    } catch (error) {
+      showNotification(error.response?.data?.message || `Failed to ${action} stake`, 'error');
     }
   };
 
@@ -128,7 +160,7 @@ const MatchDetail = () => {
   if (type === 'free') {
     return <FreeMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} />;
   } else if (type === 'boost') {
-    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} />;
+    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onStakeAction={handleStakeAction} onClaim={handleClaim} navigate={navigate} />;
   } else if (type === 'market') {
     return <MarketMatchView item={item} isPoll={isPoll} navigate={navigate} user={user} showNotification={showNotification} />;
   }
@@ -210,6 +242,17 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
                   Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
                 </p>
               )}
+              {!isResolved && (item.status === 'upcoming' || item.status === 'active') && (
+                <button
+                  onClick={() => {
+                    setSelectedOutcome(prediction.outcome);
+                    setShowPredictModal(true);
+                  }}
+                  className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Update Prediction
+                </button>
+              )}
               {hasWon && isResolved && (
                 <button
                   onClick={onClaim}
@@ -241,28 +284,35 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
           )}
 
           {showPredictModal && (
-            <Modal isOpen={true} onClose={() => setShowPredictModal(false)} title="Confirm Prediction">
+            <Modal isOpen={true} onClose={() => setShowPredictModal(false)} title={prediction ? "Update Prediction" : "Confirm Prediction"}>
               <div className="space-y-4">
-                <p className="text-gray-700 dark:text-gray-300">
-                  You are predicting: <strong>{selectedOutcome}</strong>
+                <p className="text-gray-700 dark:text-gray-300 mb-4">
+                  {prediction ? "Select a new outcome:" : "Select your prediction:"}
                 </p>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => {
-                      onPredict(selectedOutcome);
-                      setShowPredictModal(false);
-                    }}
-                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    onClick={() => setShowPredictModal(false)}
-                    className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
-                  >
-                    Cancel
-                  </button>
+                <div className="space-y-2">
+                  {getOutcomeOptions().map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => {
+                        onPredict(option);
+                        setShowPredictModal(false);
+                      }}
+                      className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
+                        selectedOutcome === option
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {option} {isPoll ? '' : 'Wins'}
+                    </button>
+                  ))}
                 </div>
+                <button
+                  onClick={() => setShowPredictModal(false)}
+                  className="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
               </div>
             </Modal>
           )}
@@ -272,14 +322,18 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
   );
 };
 
-const BoostMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate }) => {
+const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, onClaim, navigate }) => {
   const [showPredictModal, setShowPredictModal] = useState(false);
+  const [showStakeModal, setShowStakeModal] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState(null);
   const [amount, setAmount] = useState('');
+  const [stakeAction, setStakeAction] = useState('add'); // 'add' or 'withdraw'
+  const [stakeAmount, setStakeAmount] = useState('');
   
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
   const hasWon = prediction && prediction.status === 'won';
+  const canModify = !isResolved && (item.status === 'upcoming' || item.status === 'active');
   
   const getOutcomeOptions = () => {
     if (isPoll) {
@@ -346,12 +400,43 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate
                 Your Prediction: {prediction.outcome}
               </p>
               <p className="text-gray-600 dark:text-gray-400 mb-2">
-                Staked Amount: {prediction.amount} ETH
+                Staked Amount: {(prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
               </p>
               {isResolved && (
                 <p className={`text-lg mb-2 ${hasWon ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
                   Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
                 </p>
+              )}
+              {canModify && (
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <button
+                    onClick={() => {
+                      setSelectedOutcome(prediction.outcome);
+                      setShowPredictModal(true);
+                    }}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Update Prediction
+                  </button>
+                  <button
+                    onClick={() => {
+                      setStakeAction('add');
+                      setShowStakeModal(true);
+                    }}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                  >
+                    Add Stake
+                  </button>
+                  <button
+                    onClick={() => {
+                      setStakeAction('withdraw');
+                      setShowStakeModal(true);
+                    }}
+                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                  >
+                    Withdraw Stake
+                  </button>
+                </div>
               )}
               {hasWon && isResolved && (
                 <div>
@@ -389,20 +474,54 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate
           )}
 
           {showPredictModal && (
-            <Modal isOpen={true} onClose={() => setShowPredictModal(false)} title="Enter Boost Prediction">
+            <Modal isOpen={true} onClose={() => setShowPredictModal(false)} title={prediction ? "Update Boost Prediction" : "Enter Boost Prediction"}>
               <div className="space-y-4">
-                <p className="text-gray-700 dark:text-gray-300">
-                  Prediction: <strong>{selectedOutcome}</strong>
+                {prediction && (
+                  <div className="bg-blue-50 dark:bg-blue-900 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      <strong>Current Stake:</strong> {(prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
+                    </p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                      Your stake amount will be automatically preserved when you update the outcome.
+                    </p>
+                  </div>
+                )}
+                <p className="text-gray-700 dark:text-gray-300 mb-4">
+                  {prediction ? "Select a new outcome:" : "Select your prediction:"}
                 </p>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="ETH Amount"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-                  required
-                />
+                <div className="space-y-2">
+                  {getOutcomeOptions().map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => {
+                        setSelectedOutcome(option);
+                      }}
+                      className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
+                        selectedOutcome === option
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {option} {isPoll ? '' : 'Wins'}
+                    </button>
+                  ))}
+                </div>
+                {!prediction && selectedOutcome && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      ETH Amount
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="ETH Amount"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                      required
+                    />
+                  </div>
+                )}
                 <div className="text-sm text-gray-600 dark:text-gray-400">
                   <p>10% platform fee • 10% boost jackpot fee</p>
                   <p>Game locks at kickoff</p>
@@ -410,20 +529,89 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate
                 <div className="flex space-x-2">
                   <button
                     onClick={() => {
-                      if (amount) {
+                      if (prediction && selectedOutcome) {
+                        // Update existing prediction - amount is automatically preserved
+                        onPredict(selectedOutcome);
+                        setShowPredictModal(false);
+                      } else if (selectedOutcome && amount) {
+                        // Create new prediction
                         onPredict(selectedOutcome, amount);
                         setShowPredictModal(false);
                         setAmount('');
                       }
                     }}
-                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                    disabled={!selectedOutcome || (!prediction && !amount)}
+                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Confirm
+                    {prediction ? 'Update' : 'Confirm'}
                   </button>
                   <button
                     onClick={() => {
                       setShowPredictModal(false);
                       setAmount('');
+                      setSelectedOutcome(null);
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
+
+          {showStakeModal && prediction && (
+            <Modal isOpen={true} onClose={() => setShowStakeModal(false)} title={stakeAction === 'add' ? 'Add Stake' : 'Withdraw Stake'}>
+              <div className="space-y-4">
+                <p className="text-gray-700 dark:text-gray-300">
+                  Current Stake: <strong>{(prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH</strong>
+                </p>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    {stakeAction === 'add' ? 'Amount to Add' : 'Amount to Withdraw'}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder={`ETH Amount (Max: ${stakeAction === 'withdraw' ? (prediction.totalStake || prediction.amount || 0).toFixed(4) : 'unlimited'})`}
+                    value={stakeAmount}
+                    onChange={(e) => setStakeAmount(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                    required
+                  />
+                </div>
+                {stakeAction === 'withdraw' && (
+                  <button
+                    onClick={() => {
+                      const maxAmount = (prediction.totalStake || prediction.amount || 0).toFixed(4);
+                      setStakeAmount(maxAmount);
+                    }}
+                    className="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                  >
+                    Max
+                  </button>
+                )}
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => {
+                      if (stakeAmount) {
+                        onStakeAction(prediction._id, stakeAction, stakeAmount);
+                        setShowStakeModal(false);
+                        setStakeAmount('');
+                      }
+                    }}
+                    className={`flex-1 px-4 py-2 rounded-lg ${
+                      stakeAction === 'add' 
+                        ? 'bg-green-500 text-white hover:bg-green-600' 
+                        : 'bg-orange-500 text-white hover:bg-orange-600'
+                    }`}
+                  >
+                    {stakeAction === 'add' ? 'Add' : 'Withdraw'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowStakeModal(false);
+                      setStakeAmount('');
                     }}
                     className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
                   >
@@ -446,23 +634,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
   const [trades, setTrades] = useState([]);
   const [userShares, setUserShares] = useState(isPoll ? { yes: 0, no: 0 } : { teamA: 0, teamB: 0, draw: 0 });
   const [prediction, setPrediction] = useState(null);
+  const [prices, setPrices] = useState({});
 
   // Calculate prices based on liquidity
-  let prices = {};
-  let totalLiquidity = 0;
-  
-  if (isPoll) {
-    // Poll: YES/NO
-    totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
-    prices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
-    prices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
-  } else {
-    // Match: TeamA/TeamB/Draw
-    totalLiquidity = (item.marketTeamALiquidity || 0) + (item.marketTeamBLiquidity || 0) + (item.marketDrawLiquidity || 0);
-    prices.teamA = totalLiquidity === 0 ? 0.333 : (item.marketTeamALiquidity || 0) / totalLiquidity;
-    prices.teamB = totalLiquidity === 0 ? 0.333 : (item.marketTeamBLiquidity || 0) / totalLiquidity;
-    prices.draw = totalLiquidity === 0 ? 0.333 : (item.marketDrawLiquidity || 0) / totalLiquidity;
-  }
+  useEffect(() => {
+    let calculatedPrices = {};
+    let totalLiquidity = 0;
+    
+    if (isPoll) {
+      // Poll: YES/NO
+      totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
+      calculatedPrices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
+      calculatedPrices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
+    } else {
+      // Match: TeamA/TeamB/Draw
+      totalLiquidity = (item.marketTeamALiquidity || 0) + (item.marketTeamBLiquidity || 0) + (item.marketDrawLiquidity || 0);
+      calculatedPrices.teamA = totalLiquidity === 0 ? 0.333 : (item.marketTeamALiquidity || 0) / totalLiquidity;
+      calculatedPrices.teamB = totalLiquidity === 0 ? 0.333 : (item.marketTeamBLiquidity || 0) / totalLiquidity;
+      calculatedPrices.draw = totalLiquidity === 0 ? 0.333 : (item.marketDrawLiquidity || 0) / totalLiquidity;
+    }
+    
+    setPrices(calculatedPrices);
+  }, [item, isPoll]);
 
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
@@ -477,18 +670,13 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
 
   const fetchMarketData = async () => {
     try {
-      // In a real implementation, fetch user shares and trades from API
-      // For now, using mock data
-      const mockTrades = isPoll 
-        ? [
-            { id: 1, type: 'buy', option: 'yes', amount: 0.5, price: prices.yes, timestamp: new Date() },
-            { id: 2, type: 'sell', option: 'no', amount: 0.3, price: prices.no, timestamp: new Date() },
-          ]
-        : [
-            { id: 1, type: 'buy', option: 'teamA', amount: 0.5, price: prices.teamA, timestamp: new Date() },
-            { id: 2, type: 'buy', option: 'draw', amount: 0.3, price: prices.draw, timestamp: new Date() },
-          ];
-      setTrades(mockTrades);
+      const response = await api.get(`/predictions/market/${item._id}/data?type=${isPoll ? 'poll' : 'match'}`);
+      setTrades(response.data.recentTrades || []);
+      
+      // Update prices from API
+      if (response.data.prices) {
+        setPrices(response.data.prices);
+      }
     } catch (error) {
       console.error('Error fetching market data:', error);
     }
@@ -501,8 +689,30 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
         : `/predictions/match/${item._id}/user?type=market`;
       const response = await api.get(endpoint);
       setPrediction(response.data);
+      
+      // Update user shares from prediction
+      if (response.data) {
+        if (isPoll) {
+          if (response.data.outcome === 'YES') {
+            setUserShares({ yes: response.data.shares || 0, no: 0 });
+          } else if (response.data.outcome === 'NO') {
+            setUserShares({ yes: 0, no: response.data.shares || 0 });
+          }
+        } else {
+          if (response.data.outcome === 'TeamA') {
+            setUserShares({ teamA: response.data.shares || 0, teamB: 0, draw: 0 });
+          } else if (response.data.outcome === 'TeamB') {
+            setUserShares({ teamA: 0, teamB: response.data.shares || 0, draw: 0 });
+          } else if (response.data.outcome === 'Draw') {
+            setUserShares({ teamA: 0, teamB: 0, draw: response.data.shares || 0 });
+          }
+        }
+      } else {
+        setUserShares(isPoll ? { yes: 0, no: 0 } : { teamA: 0, teamB: 0, draw: 0 });
+      }
     } catch (error) {
       setPrediction(null);
+      setUserShares(isPoll ? { yes: 0, no: 0 } : { teamA: 0, teamB: 0, draw: 0 });
     }
   };
 
@@ -523,11 +733,25 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
     }
 
     try {
-      // In real implementation, call API to execute trade
-      showNotification(`${tradeType === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`, 'success');
+      if (tradeType === 'buy') {
+        await api.post('/predictions/market/buy', {
+          [isPoll ? 'pollId' : 'matchId']: item._id,
+          outcome: selectedOption,
+          amount: parseFloat(amount),
+        });
+        showNotification('Buy order executed successfully!', 'success');
+      } else {
+        // For sell, we need to specify shares or use 'max'
+        const sharesToSell = amount === 'max' || amount === 'all' ? 'max' : parseFloat(amount);
+        await api.post('/predictions/market/sell', {
+          [isPoll ? 'pollId' : 'matchId']: item._id,
+          shares: sharesToSell,
+        });
+        showNotification('Sell order executed successfully!', 'success');
+      }
       setAmount('');
-      fetchMarketData();
-      fetchUserMarketPrediction();
+      await fetchMarketData();
+      await fetchUserMarketPrediction();
     } catch (error) {
       showNotification(error.response?.data?.message || 'Trade failed', 'error');
     }
@@ -653,37 +877,56 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {trades.length > 0 ? (
-                      trades.map((trade) => (
-                        <tr key={trade.id}>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              trade.type === 'buy' 
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                            }`}>
-                              {trade.type.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
-                            <span className={
-                              trade.option === 'yes' || trade.option === 'teamA' ? 'text-green-600 dark:text-green-400' :
-                              trade.option === 'no' || trade.option === 'teamB' ? 'text-red-600 dark:text-red-400' :
-                              'text-purple-600 dark:text-purple-400'
-                            }>
-                              {trade.option === 'teamA' ? item.teamA : trade.option === 'teamB' ? item.teamB : trade.option.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                            {trade.amount} ETH
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                            {(trade.price * 100).toFixed(2)}%
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {trade.timestamp.toLocaleTimeString()}
-                          </td>
-                        </tr>
-                      ))
+                      trades.map((trade, index) => {
+                        // Handle API response format
+                        const tradeOption = trade.outcome || '';
+                        const tradeShares = trade.shares || 0;
+                        const tradeInvested = trade.totalInvested || 0;
+                        const tradeTimestamp = trade.timestamp ? new Date(trade.timestamp) : new Date();
+                        
+                        // Calculate price based on current prices
+                        let tradePrice = 0;
+                        if (tradeOption) {
+                          const normalizedOption = tradeOption.toUpperCase();
+                          if (isPoll) {
+                            tradePrice = normalizedOption === 'YES' ? prices.yes : prices.no;
+                          } else {
+                            tradePrice = normalizedOption === 'TEAMA' ? prices.teamA :
+                                        normalizedOption === 'TEAMB' ? prices.teamB :
+                                        normalizedOption === 'DRAW' ? prices.draw : 0;
+                          }
+                        }
+                        
+                        return (
+                          <tr key={trade.id || trade._id || index}>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                BUY
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                              <span className={
+                                tradeOption === 'yes' || tradeOption === 'YES' || tradeOption === 'teamA' || tradeOption === 'TeamA' ? 'text-green-600 dark:text-green-400' :
+                                tradeOption === 'no' || tradeOption === 'NO' || tradeOption === 'teamB' || tradeOption === 'TeamB' ? 'text-red-600 dark:text-red-400' :
+                                'text-purple-600 dark:text-purple-400'
+                              }>
+                                {tradeOption === 'teamA' || tradeOption === 'TeamA' || tradeOption === 'TEAMA' ? item.teamA : 
+                                 tradeOption === 'teamB' || tradeOption === 'TeamB' || tradeOption === 'TEAMB' ? item.teamB : 
+                                 tradeOption ? tradeOption.toUpperCase() : 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {tradeShares > 0 ? `${tradeShares.toFixed(4)} Shares` : `${tradeInvested.toFixed(4)} ETH`}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {tradePrice ? (tradePrice * 100).toFixed(2) : '0.00'}%
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                              {tradeTimestamp.toLocaleTimeString()}
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr>
                         <td colSpan="5" className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -802,20 +1045,35 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
               {/* Amount Input */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Amount (ETH)
+                  {tradeType === 'buy' ? 'Amount (ETH)' : 'Shares to Sell'}
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  placeholder="0.0"
-                />
-                {selectedOption && amount && (
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    placeholder={tradeType === 'buy' ? "0.0" : "0"}
+                  />
+                  {tradeType === 'sell' && prediction && prediction.shares > 0 && (
+                    <button
+                      onClick={() => setAmount('max')}
+                      className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
+                    >
+                      Max
+                    </button>
+                  )}
+                </div>
+                {tradeType === 'buy' && selectedOption && amount && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     You'll receive ~{((parseFloat(amount) || 0) / (prices[selectedOption] || 1)).toFixed(4)} shares
+                  </p>
+                )}
+                {tradeType === 'sell' && prediction && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Available: {prediction.shares || 0} shares
                   </p>
                 )}
               </div>
@@ -823,7 +1081,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
               {/* Trade Button */}
               <button
                 onClick={handleTrade}
-                disabled={!selectedOption || !amount}
+                disabled={tradeType === 'buy' ? (!selectedOption || !amount) : (!prediction || !amount || (amount !== 'max' && parseFloat(amount) > (prediction.shares || 0)))}
                 className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
                   tradeType === 'buy'
                     ? 'bg-green-500 hover:bg-green-600 text-white'
@@ -831,11 +1089,15 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {tradeType === 'buy' ? 'Buy' : 'Sell'}{' '}
-                {selectedOption === 'yes' ? 'YES' :
-                 selectedOption === 'no' ? 'NO' :
-                 selectedOption === 'teamA' ? item.teamA :
-                 selectedOption === 'teamB' ? item.teamB :
-                 selectedOption === 'draw' ? 'Draw' : ''}
+                {tradeType === 'buy' ? (
+                  selectedOption === 'yes' ? 'YES' :
+                  selectedOption === 'no' ? 'NO' :
+                  selectedOption === 'teamA' ? item.teamA :
+                  selectedOption === 'teamB' ? item.teamB :
+                  selectedOption === 'draw' ? 'Draw' : ''
+                ) : (
+                  prediction?.outcome || 'Shares'
+                )}
               </button>
 
               {/* User Holdings */}
@@ -849,28 +1111,34 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                       <>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">YES Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{userShares.yes}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'YES' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">NO Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{userShares.no}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'NO' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">{item.teamA} Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{userShares.teamA}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'TeamA' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">Draw Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{userShares.draw}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'Draw' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">{item.teamB} Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{userShares.teamB}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'TeamB' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
                         </div>
                       </>
+                    )}
+                    {prediction && (
+                      <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <span className="text-gray-600 dark:text-gray-400">Total Invested:</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{(prediction.totalInvested || 0).toFixed(4)} ETH</span>
+                      </div>
                     )}
                   </div>
                   {isResolved && hasWon && (

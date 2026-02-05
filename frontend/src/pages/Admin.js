@@ -473,7 +473,7 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
                     >
                       Add Liquidity
                     </button>
-                    {match.status === 'completed' && !match.isResolved && (
+                    {!match.isResolved && (
                       <button
                         onClick={() => setShowResolveModal(match)}
                         className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
@@ -935,7 +935,7 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
                       >
                         Add Liquidity
                       </button>
-                      {poll.status === 'settled' && !poll.isResolved && (
+                      {!poll.isResolved && (
                         <button
                           onClick={() => setShowResolveModal(poll)}
                           className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs"

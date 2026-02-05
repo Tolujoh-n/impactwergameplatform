@@ -347,30 +347,69 @@ router.delete('/matches/:id', async (req, res) => {
 router.post('/matches/:id/resolve', async (req, res) => {
   try {
     const { result } = req.body;
+    
+    // Validate result for match (must be one of: teamA, teamB, draw)
+    if (!['teamA', 'teamB', 'draw', 'TeamA', 'TeamB', 'Draw'].includes(result)) {
+      return res.status(400).json({ message: 'Invalid result. Must be teamA, teamB, or draw' });
+    }
+    
     const match = await Match.findById(req.params.id);
     
     if (!match) {
       return res.status(404).json({ message: 'Match not found' });
     }
 
-    match.result = result;
+    const normalizedResult = result.charAt(0).toUpperCase() + result.slice(1).toLowerCase();
+    if (normalizedResult === 'Teama') normalizedResult = 'TeamA';
+    if (normalizedResult === 'Teamb') normalizedResult = 'TeamB';
+
+    match.result = normalizedResult;
     match.status = 'completed';
     match.isResolved = true;
     await match.save();
 
-    // Update predictions status
+    // Update all prediction types
     const predictions = await Prediction.find({ match: match._id });
+    const boostPredictions = [];
+    
     for (const prediction of predictions) {
-      if (prediction.outcome === result) {
+      // Normalize outcome for comparison
+      const normalizedOutcome = prediction.outcome.charAt(0).toUpperCase() + prediction.outcome.slice(1).toLowerCase();
+      const normalizedPredictionOutcome = normalizedOutcome === 'Teama' ? 'TeamA' : (normalizedOutcome === 'Teamb' ? 'TeamB' : normalizedOutcome);
+      
+      if (normalizedPredictionOutcome === normalizedResult) {
         prediction.status = 'won';
       } else {
         prediction.status = 'lost';
       }
+      
+      // For market predictions, calculate payout based on shares
+      if (prediction.type === 'market' && prediction.status === 'won') {
+        // Market winners get payout based on their shares
+        const totalShares = (match.marketTeamAShares || 0) + (match.marketTeamBShares || 0) + (match.marketDrawShares || 0);
+        if (totalShares > 0) {
+          const winningShares = normalizedResult === 'TeamA' ? (match.marketTeamAShares || 0) :
+                               normalizedResult === 'TeamB' ? (match.marketTeamBShares || 0) :
+                               (match.marketDrawShares || 0);
+          const totalLiquidity = (match.marketTeamALiquidity || 0) + (match.marketTeamBLiquidity || 0) + (match.marketDrawLiquidity || 0);
+          if (winningShares > 0 && prediction.shares > 0) {
+            prediction.payout = (prediction.shares / winningShares) * totalLiquidity;
+          }
+        }
+        prediction.status = 'settled';
+      }
+      
+      if (prediction.type === 'boost') {
+        boostPredictions.push(prediction);
+      }
+      
       await prediction.save();
     }
 
     // Calculate and update payouts for boost predictions
-    await calculateBoostPayouts(match._id);
+    if (boostPredictions.length > 0) {
+      await calculateBoostPayouts(match._id);
+    }
 
     res.json(match);
   } catch (error) {
@@ -485,30 +524,61 @@ router.delete('/polls/:id', async (req, res) => {
 router.post('/polls/:id/resolve', async (req, res) => {
   try {
     const { result } = req.body;
+    
+    // Validate result for poll (must be YES or NO)
+    if (!['yes', 'no', 'YES', 'NO', 'Yes', 'No'].includes(result)) {
+      return res.status(400).json({ message: 'Invalid result. Must be YES or NO' });
+    }
+    
     const poll = await Poll.findById(req.params.id);
     
     if (!poll) {
       return res.status(404).json({ message: 'Poll not found' });
     }
 
-    poll.result = result;
+    const normalizedResult = result.toUpperCase();
+    poll.result = normalizedResult;
     poll.status = 'settled';
     poll.isResolved = true;
     await poll.save();
 
-    // Update predictions status
+    // Update all prediction types
     const predictions = await Prediction.find({ poll: poll._id });
+    const boostPredictions = [];
+    
     for (const prediction of predictions) {
-      if (prediction.outcome === result) {
+      const normalizedOutcome = prediction.outcome.toUpperCase();
+      
+      if (normalizedOutcome === normalizedResult) {
         prediction.status = 'won';
       } else {
         prediction.status = 'lost';
       }
+      
+      // For market predictions, calculate payout based on shares
+      if (prediction.type === 'market' && prediction.status === 'won') {
+        const totalShares = (poll.marketYesShares || 0) + (poll.marketNoShares || 0);
+        if (totalShares > 0) {
+          const winningShares = normalizedResult === 'YES' ? (poll.marketYesShares || 0) : (poll.marketNoShares || 0);
+          const totalLiquidity = (poll.marketYesLiquidity || 0) + (poll.marketNoLiquidity || 0);
+          if (winningShares > 0 && prediction.shares > 0) {
+            prediction.payout = (prediction.shares / winningShares) * totalLiquidity;
+          }
+        }
+        prediction.status = 'settled';
+      }
+      
+      if (prediction.type === 'boost') {
+        boostPredictions.push(prediction);
+      }
+      
       await prediction.save();
     }
 
     // Calculate and update payouts for boost predictions
-    await calculateBoostPayouts(null, poll._id);
+    if (boostPredictions.length > 0) {
+      await calculateBoostPayouts(null, poll._id);
+    }
 
     res.json(poll);
   } catch (error) {
@@ -738,21 +808,27 @@ async function calculateBoostPayouts(matchId, pollId) {
 
   if (predictions.length === 0) return;
 
-  const totalWinningAmount = predictions.reduce((sum, p) => sum + p.amount, 0);
+  // Use totalStake if available, otherwise fall back to amount
+  const totalWinningAmount = predictions.reduce((sum, p) => sum + (p.totalStake || p.amount || 0), 0);
   const match = matchId ? await Match.findById(matchId) : null;
   const poll = pollId ? await Poll.findById(pollId) : null;
-  const pool = match?.boostPool || 0;
+  const pool = match?.boostPool || poll?.boostPool || 0;
+
+  if (pool === 0 || totalWinningAmount === 0) return;
 
   // Calculate fees (10% platform, 10% jackpot)
   const platformFee = pool * 0.1;
   const jackpotFee = pool * 0.1;
   const distributablePool = pool - platformFee - jackpotFee;
 
-  // Distribute proportionally
+  // Distribute proportionally based on stake
   for (const prediction of predictions) {
-    const share = prediction.amount / totalWinningAmount;
-    prediction.payout = distributablePool * share;
-    await prediction.save();
+    const stake = prediction.totalStake || prediction.amount || 0;
+    if (stake > 0) {
+      const share = stake / totalWinningAmount;
+      prediction.payout = distributablePool * share;
+      await prediction.save();
+    }
   }
 }
 
