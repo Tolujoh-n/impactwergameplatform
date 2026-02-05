@@ -79,12 +79,28 @@ const blogSchema = new mongoose.Schema({
   },
 });
 
-blogSchema.pre('save', function(next) {
-  // Auto-generate slug if title is modified and slug doesn't exist
-  if (this.isModified('title') && (!this.slug || this.slug === '')) {
-    this.slug = this.title.toLowerCase()
+blogSchema.pre('save', async function(next) {
+  // Auto-generate slug if slug doesn't exist and title exists
+  if ((!this.slug || this.slug === '') && this.title) {
+    const baseSlug = this.title.toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
+    
+    // Check if slug exists, if so add number suffix
+    let slug = baseSlug;
+    let counter = 1;
+    const Blog = this.constructor;
+    
+    while (true) {
+      const existingBlog = await Blog.findOne({ slug: slug, _id: { $ne: this._id } });
+      if (!existingBlog) {
+        break;
+      }
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+    
+    this.slug = slug;
   }
   // Always update updatedAt
   this.updatedAt = new Date();

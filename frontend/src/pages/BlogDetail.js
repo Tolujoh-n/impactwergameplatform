@@ -370,11 +370,21 @@ const BlogContentRenderer = ({ content }) => {
     if (typeof content === 'object' && content.type === 'doc') {
       try {
         return generateHTML(content, [
-          StarterKit,
+          StarterKit.configure({
+            link: false, // Exclude link from StarterKit since we add it separately
+            underline: false, // Exclude underline to avoid conflicts
+          }),
           LinkExtension.configure({
             openOnClick: false,
+            HTMLAttributes: {
+              class: 'text-blue-500 hover:text-blue-700 underline',
+            },
           }),
-          Image,
+          Image.configure({
+            HTMLAttributes: {
+              class: 'max-w-full h-auto rounded-lg my-4',
+            },
+          }),
         ]);
       } catch (error) {
         console.error('Error rendering Tiptap content:', error);
@@ -391,10 +401,141 @@ const BlogContentRenderer = ({ content }) => {
   // Render Tiptap HTML
   if (tiptapHTML) {
     return (
-      <div
-        className="prose prose-lg dark:prose-invert max-w-none text-gray-800 dark:text-gray-200"
-        dangerouslySetInnerHTML={{ __html: tiptapHTML }}
-      />
+      <div className="blog-content-wrapper">
+        <div
+          className="blog-content text-gray-800 dark:text-gray-200"
+          dangerouslySetInnerHTML={{ __html: tiptapHTML }}
+        />
+        <style>{`
+          .blog-content-wrapper {
+            width: 100%;
+          }
+          .blog-content {
+            line-height: 1.75;
+            text-align: left;
+          }
+          .blog-content h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            line-height: 1.2;
+            color: inherit;
+          }
+          .blog-content h2 {
+            font-size: 1.875rem;
+            font-weight: 700;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            line-height: 1.3;
+            color: inherit;
+          }
+          .blog-content h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-top: 1.25rem;
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+            color: inherit;
+          }
+          .blog-content p {
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+            color: inherit;
+          }
+          .blog-content p:first-child {
+            margin-top: 0;
+          }
+          .blog-content p:last-child {
+            margin-bottom: 0;
+          }
+          .blog-content ul,
+          .blog-content ol {
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+            color: inherit;
+          }
+          .blog-content ul {
+            list-style-type: disc;
+          }
+          .blog-content ol {
+            list-style-type: decimal;
+          }
+          .blog-content li {
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+            color: inherit;
+          }
+          .blog-content li > p {
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+          }
+          .blog-content a {
+            color: #3b82f6;
+            text-decoration: underline;
+            transition: color 0.2s;
+          }
+          .blog-content a:hover {
+            color: #2563eb;
+          }
+          .blog-content strong {
+            font-weight: 700;
+            color: inherit;
+          }
+          .blog-content em {
+            font-style: italic;
+            color: inherit;
+          }
+          .blog-content u {
+            text-decoration: underline;
+            color: inherit;
+          }
+          .blog-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            margin: 1.5rem 0;
+            display: block;
+          }
+          .blog-content blockquote {
+            border-left: 4px solid #e5e7eb;
+            padding-left: 1rem;
+            margin: 1.5rem 0;
+            font-style: italic;
+            color: #6b7280;
+          }
+          .blog-content code {
+            background-color: #f3f4f6;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-size: 0.875em;
+            font-family: 'Courier New', monospace;
+          }
+          .blog-content pre {
+            background-color: #f3f4f6;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+          }
+          .blog-content pre code {
+            background-color: transparent;
+            padding: 0;
+          }
+          .dark .blog-content blockquote {
+            border-left-color: #4b5563;
+            color: #9ca3af;
+          }
+          .dark .blog-content code {
+            background-color: #374151;
+            color: #f3f4f6;
+          }
+          .dark .blog-content pre {
+            background-color: #374151;
+          }
+        `}</style>
+      </div>
     );
   }
 

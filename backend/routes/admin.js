@@ -52,36 +52,92 @@ router.get('/blogs', async (req, res) => {
 
 router.post('/blogs', async (req, res) => {
   try {
-    // Ensure content is in valid Slate format
+    // Accept Tiptap format (JSON with type: 'doc') or old Slate format
     const normalizeContent = (content) => {
       if (!content) {
-        return [{ type: 'paragraph', children: [{ text: '' }] }];
+        // Return Tiptap default format
+        return {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [],
+            },
+          ],
+        };
+      }
+      
+      // If it's already a valid Tiptap format (has type: 'doc')
+      if (typeof content === 'object' && content.type === 'doc') {
+        return content;
       }
       
       // If it's a string, try to parse it
       if (typeof content === 'string') {
         try {
           const parsed = JSON.parse(content);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          // If it's Tiptap format
+          if (parsed && typeof parsed === 'object' && parsed.type === 'doc') {
             return parsed;
           }
+          // If it's old Slate format (array)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed; // Keep old format for backward compatibility
+          }
         } catch (e) {
-          // If parsing fails, convert to paragraph
-          return [{ type: 'paragraph', children: [{ text: content }] }];
+          // If parsing fails, convert plain text to Tiptap format
+          return {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: content }],
+              },
+            ],
+          };
         }
       }
       
-      // If it's already an array, validate it
+      // If it's already an array (old Slate format), keep it for backward compatibility
       if (Array.isArray(content) && content.length > 0) {
         return content;
       }
       
-      // Default fallback
-      return [{ type: 'paragraph', children: [{ text: '' }] }];
+      // Default fallback - Tiptap format
+      return {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [],
+          },
+        ],
+      };
     };
+
+    // Generate slug from title if not provided
+    let slug = req.body.slug;
+    if (!slug && req.body.title) {
+      const baseSlug = req.body.title.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+      
+      // Check if slug exists, if so add number suffix
+      slug = baseSlug;
+      let counter = 1;
+      while (true) {
+        const existingBlog = await Blog.findOne({ slug: slug });
+        if (!existingBlog) {
+          break;
+        }
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+    }
 
     const blogData = {
       ...req.body,
+      slug: slug || req.body.slug,
       content: normalizeContent(req.body.content),
       author: req.user._id,
       publishedAt: req.body.isPublished ? new Date() : null,
@@ -106,29 +162,64 @@ router.put('/blogs/:id', async (req, res) => {
     if (req.body.content !== undefined) {
       const normalizeContent = (content) => {
         if (!content) {
-          return [{ type: 'paragraph', children: [{ text: '' }] }];
+          // Return Tiptap default format
+          return {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [],
+              },
+            ],
+          };
+        }
+        
+        // If it's already a valid Tiptap format (has type: 'doc')
+        if (typeof content === 'object' && content.type === 'doc') {
+          return content;
         }
         
         // If it's a string, try to parse it
         if (typeof content === 'string') {
           try {
             const parsed = JSON.parse(content);
-            if (Array.isArray(parsed) && parsed.length > 0) {
+            // If it's Tiptap format
+            if (parsed && typeof parsed === 'object' && parsed.type === 'doc') {
               return parsed;
             }
+            // If it's old Slate format (array)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed; // Keep old format for backward compatibility
+            }
           } catch (e) {
-            // If parsing fails, convert to paragraph
-            return [{ type: 'paragraph', children: [{ text: content }] }];
+            // If parsing fails, convert plain text to Tiptap format
+            return {
+              type: 'doc',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: content }],
+                },
+              ],
+            };
           }
         }
         
-        // If it's already an array, validate it
+        // If it's already an array (old Slate format), keep it for backward compatibility
         if (Array.isArray(content) && content.length > 0) {
           return content;
         }
         
-        // Default fallback
-        return [{ type: 'paragraph', children: [{ text: '' }] }];
+        // Default fallback - Tiptap format
+        return {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [],
+            },
+          ],
+        };
       };
       
       req.body.content = normalizeContent(req.body.content);

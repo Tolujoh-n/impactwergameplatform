@@ -421,7 +421,8 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Teams</th>
@@ -492,6 +493,7 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showCreateModal && (
@@ -880,7 +882,8 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Question</th>
@@ -959,6 +962,7 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
             )}
           </tbody>
         </table>
+        </div>
       </div>
       
       {showCreateModal && (
@@ -1253,7 +1257,8 @@ const CupsTab = ({ cups, loading, onCreateCup, onUpdateCup, onDeleteCup, onUpdat
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Name</th>
@@ -1328,6 +1333,7 @@ const CupsTab = ({ cups, loading, onCreateCup, onUpdateCup, onDeleteCup, onUpdat
             )}
           </tbody>
         </table>
+        </div>
       </div>
       
       {showCreateModal && (
@@ -1604,7 +1610,8 @@ const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDele
 
       {/* Stages List */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Order</th>
@@ -1682,6 +1689,7 @@ const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDele
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {filteredStages.length === 0 && (
@@ -1888,7 +1896,8 @@ const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) 
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Title</th>
@@ -1945,6 +1954,7 @@ const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) 
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {blogs.length === 0 && (

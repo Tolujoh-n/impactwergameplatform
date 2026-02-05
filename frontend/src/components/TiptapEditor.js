@@ -13,6 +13,9 @@ const TiptapEditor = ({ value, onChange, placeholder = 'Start writing...', showT
         heading: {
           levels: [1, 2, 3],
         },
+        // Exclude link and underline from StarterKit since we're adding them separately
+        link: false,
+        underline: false,
       }),
       Underline,
       Link.configure({
@@ -42,7 +45,7 @@ const TiptapEditor = ({ value, onChange, placeholder = 'Start writing...', showT
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-lg dark:prose-invert max-w-none min-h-[300px] p-4 focus:outline-none text-gray-900 dark:text-white',
+        class: 'prose prose-lg dark:prose-invert max-w-none min-h-[300px] p-4 focus:outline-none text-gray-900 dark:text-white text-left',
       },
     },
   });
@@ -189,6 +192,15 @@ const TiptapEditor = ({ value, onChange, placeholder = 'Start writing...', showT
         .tiptap-editor .ProseMirror {
           outline: none;
           min-height: 250px;
+          text-align: left;
+        }
+        .tiptap-editor .ProseMirror p,
+        .tiptap-editor .ProseMirror h1,
+        .tiptap-editor .ProseMirror h2,
+        .tiptap-editor .ProseMirror h3,
+        .tiptap-editor .ProseMirror ul,
+        .tiptap-editor .ProseMirror ol {
+          text-align: left;
         }
         .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
           content: attr(data-placeholder);
