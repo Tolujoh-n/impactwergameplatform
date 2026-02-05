@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './components/Notification';
 import Navbar from './components/Navbar';
@@ -37,7 +37,8 @@ function App() {
           <div className="App min-h-screen bg-gray-50 dark:bg-gray-900">
             <Navbar />
             <Routes>
-              <Route path="/" element={<Home />} />
+              {/* <Route path="/" element={<Home />} /> */}
+              <Route path="/" element={<Navigate to="/cup/worldcup" replace />} />
               <Route path="/cup/:cupSlug" element={<CupPage />} />
               <Route path="/match/:matchId/:type" element={<MatchDetail />} />
               <Route path="/poll/:pollId/:type" element={<MatchDetail />} />
