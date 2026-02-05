@@ -52,8 +52,37 @@ router.get('/blogs', async (req, res) => {
 
 router.post('/blogs', async (req, res) => {
   try {
+    // Ensure content is in valid Slate format
+    const normalizeContent = (content) => {
+      if (!content) {
+        return [{ type: 'paragraph', children: [{ text: '' }] }];
+      }
+      
+      // If it's a string, try to parse it
+      if (typeof content === 'string') {
+        try {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        } catch (e) {
+          // If parsing fails, convert to paragraph
+          return [{ type: 'paragraph', children: [{ text: content }] }];
+        }
+      }
+      
+      // If it's already an array, validate it
+      if (Array.isArray(content) && content.length > 0) {
+        return content;
+      }
+      
+      // Default fallback
+      return [{ type: 'paragraph', children: [{ text: '' }] }];
+    };
+
     const blogData = {
       ...req.body,
+      content: normalizeContent(req.body.content),
       author: req.user._id,
       publishedAt: req.body.isPublished ? new Date() : null,
     };
@@ -71,6 +100,38 @@ router.put('/blogs/:id', async (req, res) => {
     const blog = await Blog.findById(req.params.id);
     if (!blog) {
       return res.status(404).json({ message: 'Blog not found' });
+    }
+
+    // Normalize content if provided
+    if (req.body.content !== undefined) {
+      const normalizeContent = (content) => {
+        if (!content) {
+          return [{ type: 'paragraph', children: [{ text: '' }] }];
+        }
+        
+        // If it's a string, try to parse it
+        if (typeof content === 'string') {
+          try {
+            const parsed = JSON.parse(content);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed;
+            }
+          } catch (e) {
+            // If parsing fails, convert to paragraph
+            return [{ type: 'paragraph', children: [{ text: content }] }];
+          }
+        }
+        
+        // If it's already an array, validate it
+        if (Array.isArray(content) && content.length > 0) {
+          return content;
+        }
+        
+        // Default fallback
+        return [{ type: 'paragraph', children: [{ text: '' }] }];
+      };
+      
+      req.body.content = normalizeContent(req.body.content);
     }
 
     // If publishing for the first time, set publishedAt

@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../components/Notification';
+import { generateHTML } from '@tiptap/html';
+import StarterKit from '@tiptap/starter-kit';
+import LinkExtension from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
 
 const BlogDetail = () => {
   const { slug } = useParams();
@@ -357,77 +361,113 @@ const BlogDetail = () => {
   );
 };
 
-// Render Slate content
+// Render Tiptap or Slate content (backward compatible)
 const BlogContentRenderer = ({ content }) => {
-  if (!content || !Array.isArray(content)) {
-    return <p>No content available</p>;
+  const tiptapHTML = useMemo(() => {
+    if (!content) return null;
+
+    // Check if it's Tiptap format (has type: 'doc')
+    if (typeof content === 'object' && content.type === 'doc') {
+      try {
+        return generateHTML(content, [
+          StarterKit,
+          LinkExtension.configure({
+            openOnClick: false,
+          }),
+          Image,
+        ]);
+      } catch (error) {
+        console.error('Error rendering Tiptap content:', error);
+        return null;
+      }
+    }
+    return null;
+  }, [content]);
+
+  if (!content) {
+    return <p className="text-gray-600 dark:text-gray-400">No content available</p>;
   }
 
-  return (
-    <div>
-      {content.map((node, index) => {
-        switch (node.type) {
-          case 'heading-one':
-            return <h1 key={index} className="text-3xl font-bold mb-4">{renderText(node.children)}</h1>;
-          case 'heading-two':
-            return <h2 key={index} className="text-2xl font-bold mb-3">{renderText(node.children)}</h2>;
-          case 'heading-three':
-            return <h3 key={index} className="text-xl font-bold mb-2">{renderText(node.children)}</h3>;
-          case 'bulleted-list':
-            return (
-              <ul key={index} className="list-disc list-inside mb-4">
-                {node.children?.map((item, idx) => (
-                  <li key={idx}>{renderText(item.children)}</li>
-                ))}
-              </ul>
-            );
-          case 'numbered-list':
-            return (
-              <ol key={index} className="list-decimal list-inside mb-4">
-                {node.children?.map((item, idx) => (
-                  <li key={idx}>{renderText(item.children)}</li>
-                ))}
-              </ol>
-            );
-          case 'link':
-            return (
-              <a key={index} href={node.url} className="text-blue-500 hover:underline">
-                {renderText(node.children)}
-              </a>
-            );
-          case 'table':
-            return (
-              <table key={index} className="border-collapse border border-gray-300 dark:border-gray-600 my-4 w-full">
-                <tbody>
-                  {node.children?.map((row, rowIdx) => (
-                    <tr key={rowIdx}>
-                      {row.children?.map((cell, cellIdx) => (
-                        <td key={cellIdx} className="border border-gray-300 dark:border-gray-600 px-4 py-2">
-                          {renderText(cell.children)}
-                        </td>
-                      ))}
-                    </tr>
+  // Render Tiptap HTML
+  if (tiptapHTML) {
+    return (
+      <div
+        className="prose prose-lg dark:prose-invert max-w-none text-gray-800 dark:text-gray-200"
+        dangerouslySetInnerHTML={{ __html: tiptapHTML }}
+      />
+    );
+  }
+
+  // Backward compatibility: Render old Slate format
+  if (Array.isArray(content)) {
+    return (
+      <div>
+        {content.map((node, index) => {
+          switch (node.type) {
+            case 'heading-one':
+              return <h1 key={index} className="text-3xl font-bold mb-4">{renderText(node.children)}</h1>;
+            case 'heading-two':
+              return <h2 key={index} className="text-2xl font-bold mb-3">{renderText(node.children)}</h2>;
+            case 'heading-three':
+              return <h3 key={index} className="text-xl font-bold mb-2">{renderText(node.children)}</h3>;
+            case 'bulleted-list':
+              return (
+                <ul key={index} className="list-disc list-inside mb-4">
+                  {node.children?.map((item, idx) => (
+                    <li key={idx}>{renderText(item.children)}</li>
                   ))}
-                </tbody>
-              </table>
-            );
-          case 'iframe':
-            return (
-              <iframe
-                key={index}
-                src={node.url}
-                className="w-full h-64 my-4"
-                frameBorder="0"
-                allowFullScreen
-                title="Embedded content"
-              />
-            );
-          default:
-            return <p key={index} className="mb-4 text-gray-800 dark:text-gray-200">{renderText(node.children)}</p>;
-        }
-      })}
-    </div>
-  );
+                </ul>
+              );
+            case 'numbered-list':
+              return (
+                <ol key={index} className="list-decimal list-inside mb-4">
+                  {node.children?.map((item, idx) => (
+                    <li key={idx}>{renderText(item.children)}</li>
+                  ))}
+                </ol>
+              );
+            case 'link':
+              return (
+                <a key={index} href={node.url} className="text-blue-500 hover:underline">
+                  {renderText(node.children)}
+                </a>
+              );
+            case 'table':
+              return (
+                <table key={index} className="border-collapse border border-gray-300 dark:border-gray-600 my-4 w-full">
+                  <tbody>
+                    {node.children?.map((row, rowIdx) => (
+                      <tr key={rowIdx}>
+                        {row.children?.map((cell, cellIdx) => (
+                          <td key={cellIdx} className="border border-gray-300 dark:border-gray-600 px-4 py-2">
+                            {renderText(cell.children)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            case 'iframe':
+              return (
+                <iframe
+                  key={index}
+                  src={node.url}
+                  className="w-full h-64 my-4"
+                  frameBorder="0"
+                  allowFullScreen
+                  title="Embedded content"
+                />
+              );
+            default:
+              return <p key={index} className="mb-4 text-gray-800 dark:text-gray-200">{renderText(node.children)}</p>;
+          }
+        })}
+      </div>
+    );
+  }
+
+  return <p className="text-gray-600 dark:text-gray-400">Invalid content format</p>;
 };
 
 const renderText = (children) => {

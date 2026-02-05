@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useNotification } from '../components/Notification';
 import Modal from '../components/Modal';
-import SlateEditor from '../components/SlateEditor';
+import TiptapEditor from '../components/TiptapEditor';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('matches');
@@ -2005,7 +2005,7 @@ const CreateBlogModal = ({ onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    content: [{ type: 'paragraph', children: [{ text: '' }] }],
+    content: null, // Tiptap handles null/undefined gracefully
     thumbnail: '',
     category: 'General',
     tags: '',
@@ -2117,7 +2117,7 @@ const EditBlogModal = ({ blog, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
     title: blog.title || '',
     description: blog.description || '',
-    content: blog.content || [{ type: 'paragraph', children: [{ text: '' }] }],
+    content: blog.content || null, // Tiptap handles null/undefined gracefully
     thumbnail: blog.thumbnail || '',
     category: blog.category || 'General',
     tags: blog.tags?.join(', ') || '',
@@ -2224,26 +2224,168 @@ const EditBlogModal = ({ blog, onClose, onSubmit }) => {
   );
 };
 
-// Simple Blog Editor wrapper - SlateToolbar needs to be inside Slate context
+// Simple Blog Editor wrapper for Tiptap
 const BlogEditor = ({ value, onChange }) => {
-  const [editorValue, setEditorValue] = React.useState(value || [{ type: 'paragraph', children: [{ text: '' }] }]);
-
-  React.useEffect(() => {
-    if (value) {
-      setEditorValue(value);
+  // Tiptap accepts JSON or HTML, we'll use JSON format
+  // Handle conversion from old Slate format if needed
+  const normalizeValue = React.useCallback((val) => {
+    if (!val) {
+      return null; // Tiptap handles null/undefined gracefully
     }
-  }, [value]);
 
-  const handleChange = (newValue) => {
-    setEditorValue(newValue);
-    if (onChange) {
-      onChange(newValue);
+    // If it's already a Tiptap JSON format (has type and content properties)
+    if (typeof val === 'object' && val.type) {
+      return val;
     }
-  };
+
+    // If it's a string, try to parse it
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      } catch (e) {
+        // If it's plain text, convert to Tiptap format
+        return {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: val }],
+            },
+          ],
+        };
+      }
+    }
+
+    // If it's an array (old Slate format), convert to Tiptap format
+    if (Array.isArray(val)) {
+      const convertSlateToTiptap = (slateNodes) => {
+        return slateNodes.map((node) => {
+          if (node.type === 'paragraph') {
+            return {
+              type: 'paragraph',
+              content: node.children
+                ? node.children.map((child) => {
+                    if (typeof child === 'string') {
+                      return { type: 'text', text: child };
+                    }
+                    return {
+                      type: 'text',
+                      text: child.text || '',
+                      marks: [
+                        ...(child.bold ? [{ type: 'bold' }] : []),
+                        ...(child.italic ? [{ type: 'italic' }] : []),
+                      ],
+                    };
+                  })
+                : [],
+            };
+          }
+          if (node.type === 'heading-one') {
+            return {
+              type: 'heading',
+              attrs: { level: 1 },
+              content: node.children
+                ? node.children.map((child) => ({
+                    type: 'text',
+                    text: typeof child === 'string' ? child : child.text || '',
+                  }))
+                : [],
+            };
+          }
+          if (node.type === 'heading-two') {
+            return {
+              type: 'heading',
+              attrs: { level: 2 },
+              content: node.children
+                ? node.children.map((child) => ({
+                    type: 'text',
+                    text: typeof child === 'string' ? child : child.text || '',
+                  }))
+                : [],
+            };
+          }
+          if (node.type === 'heading-three') {
+            return {
+              type: 'heading',
+              attrs: { level: 3 },
+              content: node.children
+                ? node.children.map((child) => ({
+                    type: 'text',
+                    text: typeof child === 'string' ? child : child.text || '',
+                  }))
+                : [],
+            };
+          }
+          if (node.type === 'bulleted-list') {
+            return {
+              type: 'bulletList',
+              content: node.children
+                ? node.children.map((item) => ({
+                    type: 'listItem',
+                    content: [
+                      {
+                        type: 'paragraph',
+                        content: item.children
+                          ? item.children.map((child) => ({
+                              type: 'text',
+                              text: typeof child === 'string' ? child : child.text || '',
+                            }))
+                          : [],
+                      },
+                    ],
+                  }))
+                : [],
+            };
+          }
+          if (node.type === 'numbered-list') {
+            return {
+              type: 'orderedList',
+              content: node.children
+                ? node.children.map((item) => ({
+                    type: 'listItem',
+                    content: [
+                      {
+                        type: 'paragraph',
+                        content: item.children
+                          ? item.children.map((child) => ({
+                              type: 'text',
+                              text: typeof child === 'string' ? child : child.text || '',
+                            }))
+                          : [],
+                      },
+                    ],
+                  }))
+                : [],
+            };
+          }
+          // Default to paragraph
+          return {
+            type: 'paragraph',
+            content: [],
+          };
+        });
+      };
+
+      return {
+        type: 'doc',
+        content: convertSlateToTiptap(val),
+      };
+    }
+
+    // Return as-is if it's already a valid Tiptap format
+    return val;
+  }, []);
+
+  const normalizedValue = React.useMemo(() => {
+    return normalizeValue(value);
+  }, [value, normalizeValue]);
 
   return (
     <div>
-      <SlateEditor value={editorValue} onChange={handleChange} showToolbar />
+      <TiptapEditor value={normalizedValue} onChange={onChange} showToolbar />
     </div>
   );
 };
