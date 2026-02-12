@@ -223,16 +223,40 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-          {/* Back Button */}
-          <button
-            onClick={handleBack}
-            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 mb-6 transition-colors"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="font-medium">Back to Cup</span>
-          </button>
+          {/* Back Button and Status Tags */}
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={handleBack}
+              className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="font-medium">Back to Cup</span>
+            </button>
+            <div className="flex items-center gap-2">
+              {/* Status Tag */}
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                isPoll 
+                  ? (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                     item.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                     item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                     'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
+                  : (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                     item.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                     item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                     'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
+              }`}>
+                {item.status?.toUpperCase() || 'N/A'}
+              </span>
+              {/* Resolved Tag */}
+              {item.isResolved && (
+                <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
+                  RESOLVED
+                </span>
+              )}
+            </div>
+          </div>
           {/* Header with Images */}
           {!isPoll && (
             <div className="flex items-center justify-center gap-8 mb-6">
@@ -431,16 +455,40 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-          {/* Back Button */}
-          <button
-            onClick={handleBack}
-            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 mb-6 transition-colors"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="font-medium">Back to Cup</span>
-          </button>
+          {/* Back Button and Status Tags */}
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={handleBack}
+              className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="font-medium">Back to Cup</span>
+            </button>
+            <div className="flex items-center gap-2">
+              {/* Status Tag */}
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                isPoll 
+                  ? (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                     item.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                     item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                     'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
+                  : (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                     item.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                     item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                     'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
+              }`}>
+                {item.status?.toUpperCase() || 'N/A'}
+              </span>
+              {/* Resolved Tag */}
+              {item.isResolved && (
+                <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
+                  RESOLVED
+                </span>
+              )}
+            </div>
+          </div>
           {/* Header with Images */}
           {!isPoll && (
             <div className="flex items-center justify-center gap-8 mb-6">
@@ -930,16 +978,40 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back Button */}
-        <button
-          onClick={handleBack}
-          className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 mb-4 transition-colors"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          <span className="font-medium">Back to Cup</span>
-        </button>
+        {/* Back Button and Status Tags */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={handleBack}
+            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="font-medium">Back to Cup</span>
+          </button>
+          <div className="flex items-center gap-2">
+            {/* Status Tag */}
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+              isPoll 
+                ? (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                   item.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                   item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                   'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
+                : (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                   item.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                   item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                   'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
+            }`}>
+              {item.status?.toUpperCase() || 'N/A'}
+            </span>
+            {/* Resolved Tag */}
+            {item.isResolved && (
+              <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
+                RESOLVED
+              </span>
+            )}
+          </div>
+        </div>
         {/* Header */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
           {!isPoll && (

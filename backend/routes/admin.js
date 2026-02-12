@@ -317,8 +317,8 @@ router.post('/matches', async (req, res) => {
       marketInitialized: (marketTeamALiquidity > 0 || marketTeamBLiquidity > 0 || marketDrawLiquidity > 0),
       isFeatured: isFeatured || false,
       isSponsored: isSponsored || false,
-      sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages : [],
-      lockedTime: lockedTime ? new Date(lockedTime) : undefined,
+      sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages.filter(img => img && img.trim() !== '') : [],
+      lockedTime: lockedTime && lockedTime.trim() !== '' ? new Date(lockedTime) : undefined,
       teamAImage: teamAImage || undefined,
       teamBImage: teamBImage || undefined,
     });
@@ -468,7 +468,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
 // Create Poll with liquidity
 router.post('/polls', async (req, res) => {
   try {
-    const { question, description, type, cup, stage, marketYesLiquidity, marketNoLiquidity, isFeatured, optionType, options } = req.body;
+    const { question, description, type, cup, stage, marketYesLiquidity, marketNoLiquidity, isFeatured, isSponsored, sponsoredImages, lockedTime, optionType, options } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -488,8 +488,8 @@ router.post('/polls', async (req, res) => {
       stage: stageDoc?._id,
       isFeatured: isFeatured || false,
       isSponsored: isSponsored || false,
-      sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages : [],
-      lockedTime: lockedTime ? new Date(lockedTime) : undefined,
+      sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages.filter(img => img && img.trim() !== '') : [],
+      lockedTime: lockedTime && lockedTime.trim() !== '' ? new Date(lockedTime) : undefined,
       optionType: optionType || 'normal',
     };
 
