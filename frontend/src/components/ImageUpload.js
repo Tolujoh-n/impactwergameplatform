@@ -43,8 +43,14 @@ const ImageUpload = ({ label, value, onChange, folder = 'wergame' }) => {
   };
 
   const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    await validateAndUpload(file);
+    const file = e.target.files?.[0];
+    if (file) {
+      await validateAndUpload(file);
+      // Reset input to allow selecting the same file again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   const handleDragOver = (e) => {

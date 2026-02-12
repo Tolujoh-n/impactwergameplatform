@@ -8,7 +8,8 @@ const CupPage = () => {
   const [cup, setCup] = useState(null);
   const [stages, setStages] = useState([]);
   const [selectedStage, setSelectedStage] = useState(null);
-  const [featuredMatch, setFeaturedMatch] = useState(null);
+  const [featuredMatches, setFeaturedMatches] = useState([]);
+  const [featuredPolls, setFeaturedPolls] = useState([]);
   const [matches, setMatches] = useState([]);
   const [awardPolls, setAwardPolls] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,14 +31,24 @@ const CupPage = () => {
       setMatches(matchesRes.data);
       setAwardPolls(pollsRes.data);
 
+      // Filter featured matches and polls
+      const featuredMatchesData = matchesRes.data.filter(m => m.isFeatured);
+      setFeaturedMatches(featuredMatchesData);
+      
+      // Fetch all polls to get featured ones
+      try {
+        const allPollsRes = await api.get(`/polls/cup/${cupSlug}`);
+        const featuredPollsData = allPollsRes.data.filter(p => p.isFeatured);
+        setFeaturedPolls(featuredPollsData);
+      } catch (error) {
+        console.error('Error fetching polls:', error);
+        setFeaturedPolls([]);
+      }
+
       if (sortedStages.length > 0) {
         // Find the current active stage (isCurrent or currentActive)
         const currentStage = sortedStages.find(s => s.isCurrent || s.currentActive);
         setSelectedStage((currentStage && currentStage._id) || sortedStages[0]._id);
-      }
-
-      if (matchesRes.data.length > 0) {
-        setFeaturedMatch(matchesRes.data[0]);
       }
     } catch (error) {
       console.error('Error fetching cup data:', error);
@@ -221,13 +232,13 @@ const CupPage = () => {
                         </button>
                       )}
                     </div>
-                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
                       {teamArray.slice(0, displayCount).map((team, idx) => (
                         <div key={idx} className="flex flex-col items-center group cursor-pointer" onClick={() => setShowTeamsModal(true)}>
                           <img
                             src={team.image}
                             alt={team.name}
-                            className="w-16 h-16 object-cover rounded-full border-2 border-gray-200 dark:border-gray-700 mb-2 group-hover:border-blue-500 dark:group-hover:border-blue-400 transition-colors"
+                            className="w-12 h-12 object-cover rounded-full border-2 border-gray-200 dark:border-gray-700 mb-1 group-hover:border-blue-500 dark:group-hover:border-blue-400 transition-colors"
                           />
                           <p className="text-xs text-center text-gray-700 dark:text-gray-300 font-medium truncate w-full">
                             {team.name}
@@ -241,13 +252,40 @@ const CupPage = () => {
               return null;
             })()}
 
-            {/* Featured Match */}
-            {featuredMatch && (
+            {/* Featured Section */}
+            {(featuredMatches.length > 0 || featuredPolls.length > 0) && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                  Featured Poll
+                  Featured
                 </h2>
-                <MatchCard match={featuredMatch} featured />
+                <div className="space-y-4">
+                  {/* Featured Matches */}
+                  {featuredMatches.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
+                        Featured Matches
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {featuredMatches.map((match) => (
+                          <MatchCard key={match._id} match={match} featured />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Featured Polls */}
+                  {featuredPolls.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
+                        Featured Polls
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {featuredPolls.map((poll) => (
+                          <PollCard key={poll._id} poll={poll} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -306,15 +344,15 @@ const CupPage = () => {
         return (
           <Modal isOpen={true} onClose={() => setShowTeamsModal(false)} title={`All Teams - ${stages.find(s => s._id === selectedStage)?.name || 'Current Stage'}`} size="lg">
             <div className="max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-6 p-2">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 p-2">
                 {teamArray.map((team, idx) => (
                   <div key={idx} className="flex flex-col items-center">
                     <img
                       src={team.image}
                       alt={team.name}
-                      className="w-20 h-20 object-cover rounded-full border-4 border-gray-200 dark:border-gray-700 mb-3 shadow-md hover:shadow-lg transition-shadow"
+                      className="w-16 h-16 object-cover rounded-full border-2 border-gray-200 dark:border-gray-700 mb-2 shadow-md hover:shadow-lg transition-shadow"
                     />
-                    <p className="text-sm text-center text-gray-700 dark:text-gray-300 font-medium">
+                    <p className="text-xs text-center text-gray-700 dark:text-gray-300 font-medium">
                       {team.name}
                     </p>
                   </div>
@@ -333,21 +371,25 @@ const MatchCard = ({ match, featured = false }) => {
     <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 ${featured ? 'border-2 border-blue-500' : ''}`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            {match.teamAImage && (
-              <img src={match.teamAImage} alt={match.teamA} className="w-10 h-10 object-cover rounded-full" />
-            )}
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              {match.teamA}
-            </h3>
-          </div>
-          <div className="flex items-center gap-3 mb-2">
-            {match.teamBImage && (
-              <img src={match.teamBImage} alt={match.teamB} className="w-10 h-10 object-cover rounded-full" />
-            )}
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              {match.teamB}
-            </h3>
+          {/* Teams aligned horizontally */}
+          <div className="flex items-center gap-4 mb-2">
+            <div className="flex items-center gap-2 flex-1">
+              {match.teamAImage && (
+                <img src={match.teamAImage} alt={match.teamA} className="w-10 h-10 object-cover rounded-full" />
+              )}
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
+                {match.teamA}
+              </h3>
+            </div>
+            <span className="text-gray-400 dark:text-gray-500 font-semibold">VS</span>
+            <div className="flex items-center gap-2 flex-1">
+              {match.teamBImage && (
+                <img src={match.teamBImage} alt={match.teamB} className="w-10 h-10 object-cover rounded-full" />
+              )}
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
+                {match.teamB}
+              </h3>
+            </div>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {new Date(match.date).toLocaleDateString()} • {match.stageName}
