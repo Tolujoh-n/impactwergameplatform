@@ -81,6 +81,16 @@ const matchSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isSponsored: {
+    type: Boolean,
+    default: false,
+  },
+  sponsoredImages: [{
+    type: String,
+  }],
+  lockedTime: {
+    type: Date,
+  },
   isResolved: {
     type: Boolean,
     default: false,

@@ -10,6 +10,8 @@ const CupPage = () => {
   const [selectedStage, setSelectedStage] = useState(null);
   const [featuredMatches, setFeaturedMatches] = useState([]);
   const [featuredPolls, setFeaturedPolls] = useState([]);
+  const [sponsoredMatches, setSponsoredMatches] = useState([]);
+  const [sponsoredPolls, setSponsoredPolls] = useState([]);
   const [matches, setMatches] = useState([]);
   const [awardPolls, setAwardPolls] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,14 +37,21 @@ const CupPage = () => {
       const featuredMatchesData = matchesRes.data.filter(m => m.isFeatured);
       setFeaturedMatches(featuredMatchesData);
       
-      // Fetch all polls to get featured ones
+      // Filter sponsored matches
+      const sponsoredMatchesData = matchesRes.data.filter(m => m.isSponsored);
+      setSponsoredMatches(sponsoredMatchesData);
+      
+      // Fetch all polls to get featured and sponsored ones
       try {
         const allPollsRes = await api.get(`/polls/cup/${cupSlug}`);
         const featuredPollsData = allPollsRes.data.filter(p => p.isFeatured);
         setFeaturedPolls(featuredPollsData);
+        const sponsoredPollsData = allPollsRes.data.filter(p => p.isSponsored);
+        setSponsoredPolls(sponsoredPollsData);
       } catch (error) {
         console.error('Error fetching polls:', error);
         setFeaturedPolls([]);
+        setSponsoredPolls([]);
       }
 
       if (sortedStages.length > 0) {
@@ -267,7 +276,7 @@ const CupPage = () => {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {featuredMatches.map((match) => (
-                          <MatchCard key={match._id} match={match} featured />
+                          <MatchCard key={match._id} match={match} featured sponsored={match.isSponsored} />
                         ))}
                       </div>
                     </div>
@@ -280,7 +289,47 @@ const CupPage = () => {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {featuredPolls.map((poll) => (
-                          <PollCard key={poll._id} poll={poll} />
+                          <PollCard key={poll._id} poll={poll} featured sponsored={poll.isSponsored} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Sponsored Section */}
+            {(sponsoredMatches.length > 0 || sponsoredPolls.length > 0) && (
+              <div className="bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/30 dark:to-gray-800 rounded-lg shadow-lg p-6 border-2 border-amber-200 dark:border-amber-700">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-2xl">⭐</span>
+                  <h2 className="text-xl font-bold text-amber-900 dark:text-amber-200">
+                    Sponsored
+                  </h2>
+                </div>
+                <div className="space-y-4">
+                  {/* Sponsored Matches */}
+                  {sponsoredMatches.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-300 mb-3">
+                        Sponsored Matches
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {sponsoredMatches.map((match) => (
+                          <MatchCard key={match._id} match={match} sponsored />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Sponsored Polls */}
+                  {sponsoredPolls.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-300 mb-3">
+                        Sponsored Polls
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {sponsoredPolls.map((poll) => (
+                          <PollCard key={poll._id} poll={poll} sponsored />
                         ))}
                       </div>
                     </div>
@@ -366,48 +415,87 @@ const CupPage = () => {
   );
 };
 
-const MatchCard = ({ match, featured = false }) => {
+const MatchCard = ({ match, featured = false, sponsored = false }) => {
+  const formatGMTTime = (date) => {
+    return new Date(date).toLocaleString('en-GB', {
+      timeZone: 'GMT',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }) + ' GMT';
+  };
+
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 ${featured ? 'border-2 border-blue-500' : ''}`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex-1">
-          {/* Teams aligned horizontally */}
-          <div className="flex items-center gap-4 mb-2">
-            <div className="flex items-center gap-2 flex-1">
-              {match.teamAImage && (
-                <img src={match.teamAImage} alt={match.teamA} className="w-10 h-10 object-cover rounded-full" />
-              )}
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
-                {match.teamA}
-              </h3>
-            </div>
-            <span className="text-gray-400 dark:text-gray-500 font-semibold">VS</span>
-            <div className="flex items-center gap-2 flex-1">
-              {match.teamBImage && (
-                <img src={match.teamBImage} alt={match.teamB} className="w-10 h-10 object-cover rounded-full" />
-              )}
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
-                {match.teamB}
-              </h3>
-            </div>
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 ${featured ? 'border-2 border-blue-500' : ''} ${sponsored ? 'border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/20 dark:to-gray-800' : ''}`}>
+      {/* Sponsored Images Banner */}
+      {sponsored && match.sponsoredImages && match.sponsoredImages.length > 0 && (
+        <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">SPONSORED</span>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {new Date(match.date).toLocaleDateString()} • {match.stageName}
-          </p>
+          <div className="flex gap-2 overflow-x-auto">
+            {match.sponsoredImages.map((img, idx) => (
+              <img
+                key={idx}
+                src={img}
+                alt={`Sponsor ${idx + 1}`}
+                className="h-16 object-contain rounded-lg border border-gray-200 dark:border-gray-700"
+              />
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {match.isResolved && (
-            <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
-              RESOLVED
+      )}
+
+      <div className="mb-4">
+        {/* Teams aligned horizontally */}
+        <div className="flex items-center gap-4 mb-3">
+          <div className="flex items-center gap-2 flex-1">
+            {match.teamAImage && (
+              <img src={match.teamAImage} alt={match.teamA} className="w-10 h-10 object-cover rounded-full" />
+            )}
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
+              {match.teamA}
+            </h3>
+          </div>
+          <span className="text-gray-400 dark:text-gray-500 font-semibold">VS</span>
+          <div className="flex items-center gap-2 flex-1">
+            {match.teamBImage && (
+              <img src={match.teamBImage} alt={match.teamB} className="w-10 h-10 object-cover rounded-full" />
+            )}
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
+              {match.teamB}
+            </h3>
+          </div>
+        </div>
+
+        {/* Status and Timeline row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {match.isResolved && (
+              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
+                RESOLVED
+              </span>
+            )}
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              match.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+              match.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+              match.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+              'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+            }`}>
+              {match.status?.toUpperCase()}
             </span>
-          )}
-          <span className={`px-3 py-1 rounded-full text-sm ${
-            match.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
-            match.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
-            'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-          }`}>
-            {match.status}
-          </span>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+              {match.stageName}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {formatGMTTime(match.date)}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -435,22 +523,81 @@ const MatchCard = ({ match, featured = false }) => {
   );
 };
 
-const PollCard = ({ poll }) => {
+const PollCard = ({ poll, sponsored = false, featured = false }) => {
+  const formatGMTTime = (date) => {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleString('en-GB', {
+      timeZone: 'GMT',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }) + ' GMT';
+  };
+
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 ${
+      featured ? 'border-2 border-blue-500' : ''
+    } ${
+      sponsored ? 'border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/20 dark:to-gray-800' : ''
+    }`}>
+      {/* Sponsored Images Banner */}
+      {sponsored && poll.sponsoredImages && poll.sponsoredImages.length > 0 && (
+        <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">SPONSORED</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            {poll.sponsoredImages.map((img, idx) => (
+              <img
+                key={idx}
+                src={img}
+                alt={`Sponsor ${idx + 1}`}
+                className="h-16 object-contain rounded-lg border border-gray-200 dark:border-gray-700"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mb-4">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
           {poll.question}
         </h3>
-        {poll.isResolved && (
-          <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
-            RESOLVED
-          </span>
-        )}
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+          {poll.description}
+        </p>
+
+        {/* Status and Timeline row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {poll.isResolved && (
+              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
+                RESOLVED
+              </span>
+            )}
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              poll.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+              poll.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+              poll.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+              'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+            }`}>
+              {poll.status?.toUpperCase()}
+            </span>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+              {poll.type?.toUpperCase() || 'POLL'}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {formatGMTTime(poll.createdAt)}
+            </p>
+          </div>
+        </div>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        {poll.description}
-      </p>
+
       {/* Show poll options with images if option-based */}
       {poll.optionType === 'options' && poll.options && poll.options.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
@@ -464,6 +611,7 @@ const PollCard = ({ poll }) => {
           ))}
         </div>
       )}
+
       <div className="flex items-center space-x-2">
         <Link
           to={`/poll/${poll._id}/free`}

@@ -292,7 +292,7 @@ router.post('/upload-image', upload.single('image'), async (req, res) => {
 // Create Match with liquidity
 router.post('/matches', async (req, res) => {
   try {
-    const { teamA, teamB, date, cup, stage, stageName, marketTeamALiquidity, marketTeamBLiquidity, marketDrawLiquidity, isFeatured, teamAImage, teamBImage } = req.body;
+    const { teamA, teamB, date, cup, stage, stageName, marketTeamALiquidity, marketTeamBLiquidity, marketDrawLiquidity, isFeatured, isSponsored, sponsoredImages, lockedTime, teamAImage, teamBImage } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -316,6 +316,9 @@ router.post('/matches', async (req, res) => {
       marketDrawLiquidity: marketDrawLiquidity || 0,
       marketInitialized: (marketTeamALiquidity > 0 || marketTeamBLiquidity > 0 || marketDrawLiquidity > 0),
       isFeatured: isFeatured || false,
+      isSponsored: isSponsored || false,
+      sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages : [],
+      lockedTime: lockedTime ? new Date(lockedTime) : undefined,
       teamAImage: teamAImage || undefined,
       teamBImage: teamBImage || undefined,
     });
@@ -484,6 +487,9 @@ router.post('/polls', async (req, res) => {
       cup: cupDoc._id,
       stage: stageDoc?._id,
       isFeatured: isFeatured || false,
+      isSponsored: isSponsored || false,
+      sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages : [],
+      lockedTime: lockedTime ? new Date(lockedTime) : undefined,
       optionType: optionType || 'normal',
     };
 
@@ -539,8 +545,12 @@ router.put('/polls/:id', async (req, res) => {
 // Update Poll Status
 router.post('/polls/:id/status', async (req, res) => {
   try {
-    const { status } = req.body;
-    const poll = await Poll.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    const { status, lockedTime } = req.body;
+    const update = { status };
+    if (lockedTime !== undefined) {
+      update.lockedTime = lockedTime ? new Date(lockedTime) : null;
+    }
+    const poll = await Poll.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!poll) {
       return res.status(404).json({ message: 'Poll not found' });
     }
@@ -779,8 +789,12 @@ router.post('/stages', async (req, res) => {
 // Update Match Status
 router.post('/matches/:id/status', async (req, res) => {
   try {
-    const { status } = req.body;
-    const match = await Match.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    const { status, lockedTime } = req.body;
+    const update = { status };
+    if (lockedTime !== undefined) {
+      update.lockedTime = lockedTime ? new Date(lockedTime) : null;
+    }
+    const match = await Match.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!match) {
       return res.status(404).json({ message: 'Match not found' });
     }

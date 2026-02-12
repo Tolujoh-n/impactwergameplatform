@@ -206,9 +206,9 @@ const Admin = () => {
     }
   };
 
-  const handleUpdatePollStatus = async (pollId, status) => {
+  const handleUpdatePollStatus = async (pollId, updates) => {
     try {
-      await api.post(`/admin/polls/${pollId}/status`, { status });
+      await api.post(`/admin/polls/${pollId}/status`, updates);
       fetchData();
       showNotification('Poll status updated successfully!', 'success');
     } catch (error) {
@@ -306,9 +306,9 @@ const Admin = () => {
     }
   };
 
-  const handleUpdateStatus = async (matchId, status) => {
+  const handleUpdateStatus = async (matchId, updates) => {
     try {
-      await api.post(`/admin/matches/${matchId}/status`, { status });
+      await api.post(`/admin/matches/${matchId}/status`, updates);
       fetchData();
       showNotification('Status updated successfully!', 'success');
     } catch (error) {
@@ -600,6 +600,9 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
     marketTeamBLiquidity: '',
     marketDrawLiquidity: '',
     isFeatured: false,
+    isSponsored: false,
+    sponsoredImages: [],
+    lockedTime: '',
     teamAImage: '',
     teamBImage: '',
   });
@@ -765,15 +768,76 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
             className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
         </div>
-        <label className="flex items-center">
+        <div className="space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isFeatured}
+              onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Featured Match</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isSponsored}
+              onChange={(e) => setFormData({ ...formData, isSponsored: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Sponsored Match</span>
+          </label>
+        </div>
+        
+        {/* Sponsored Images - Show when sponsored is checked */}
+        {formData.isSponsored && (
+          <div className="border p-4 rounded-lg dark:border-gray-700">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Sponsored Images (optional)
+            </label>
+            <div className="space-y-2">
+              {formData.sponsoredImages.map((img, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <img src={img} alt={`Sponsor ${idx + 1}`} className="w-16 h-16 object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newImages = formData.sponsoredImages.filter((_, i) => i !== idx);
+                      setFormData({ ...formData, sponsoredImages: newImages });
+                    }}
+                    className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <ImageUpload
+                label="Add Sponsored Image"
+                value=""
+                onChange={(url) => {
+                  if (url) {
+                    setFormData({ ...formData, sponsoredImages: [...formData.sponsoredImages, url] });
+                  }
+                }}
+                folder="wergame/sponsored"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Locked Time */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Locked Time (optional) - When predictions should be locked
+          </label>
           <input
-            type="checkbox"
-            checked={formData.isFeatured}
-            onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
-            className="mr-2"
+            type="datetime-local"
+            value={formData.lockedTime}
+            onChange={(e) => setFormData({ ...formData, lockedTime: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
-          <span className="text-gray-700 dark:text-gray-300">Featured Match</span>
-        </label>
+        </div>
+
         <div className="flex space-x-2">
           <button
             type="submit"
@@ -910,24 +974,39 @@ const StatusModal = ({ match, onClose, onSubmit }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(match._id, status);
+    const updates = { status };
+    // If status is set to locked, immediately lock (override any locked time)
+    if (status === 'locked') {
+      updates.lockedTime = new Date().toISOString();
+    }
+    onSubmit(match._id, updates);
     onClose();
   };
 
   return (
     <Modal isOpen={true} onClose={onClose} title="Update Match Status">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-          required
-        >
-          <option value="upcoming">Upcoming</option>
-          <option value="live">Live</option>
-          <option value="locked">Locked</option>
-          <option value="completed">Completed</option>
-        </select>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Status
+          </label>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            required
+          >
+            <option value="upcoming">Upcoming</option>
+            <option value="live">Live</option>
+            <option value="locked">Locked</option>
+            <option value="completed">Completed</option>
+          </select>
+          {status === 'locked' && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+              Setting status to "Locked" will immediately lock predictions for this match.
+            </p>
+          )}
+        </div>
         <div className="flex space-x-2">
           <button
             type="submit"
@@ -1142,6 +1221,9 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
     marketYesLiquidity: '',
     marketNoLiquidity: '',
     isFeatured: false,
+    isSponsored: false,
+    sponsoredImages: [],
+    lockedTime: '',
     options: [],
   });
 
@@ -1324,15 +1406,76 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
             )}
           </div>
         )}
-        <label className="flex items-center">
+        <div className="space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isFeatured}
+              onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Featured Poll</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isSponsored}
+              onChange={(e) => setFormData({ ...formData, isSponsored: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Sponsored Poll</span>
+          </label>
+        </div>
+        
+        {/* Sponsored Images - Show when sponsored is checked */}
+        {formData.isSponsored && (
+          <div className="border p-4 rounded-lg dark:border-gray-700">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Sponsored Images (optional)
+            </label>
+            <div className="space-y-2">
+              {formData.sponsoredImages.map((img, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <img src={img} alt={`Sponsor ${idx + 1}`} className="w-16 h-16 object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newImages = formData.sponsoredImages.filter((_, i) => i !== idx);
+                      setFormData({ ...formData, sponsoredImages: newImages });
+                    }}
+                    className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <ImageUpload
+                label="Add Sponsored Image"
+                value=""
+                onChange={(url) => {
+                  if (url) {
+                    setFormData({ ...formData, sponsoredImages: [...formData.sponsoredImages, url] });
+                  }
+                }}
+                folder="wergame/sponsored"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Locked Time */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Locked Time (optional) - When predictions should be locked
+          </label>
           <input
-            type="checkbox"
-            checked={formData.isFeatured}
-            onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
-            className="mr-2"
+            type="datetime-local"
+            value={formData.lockedTime}
+            onChange={(e) => setFormData({ ...formData, lockedTime: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
-          <span className="text-gray-700 dark:text-gray-300">Featured Poll</span>
-        </label>
+        </div>
+
         <div className="flex space-x-2">
           <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
             Create
@@ -2772,6 +2915,9 @@ const EditMatchModal = ({ match, cups, stages, onClose, onSubmit }) => {
     stage: match.stage?._id || match.stage || '',
     stageName: match.stageName || '',
     isFeatured: match.isFeatured || false,
+    isSponsored: match.isSponsored || false,
+    sponsoredImages: match.sponsoredImages || [],
+    lockedTime: match.lockedTime ? new Date(match.lockedTime).toISOString().slice(0, 16) : '',
     teamAImage: match.teamAImage || '',
     teamBImage: match.teamBImage || '',
   });
@@ -2867,15 +3013,76 @@ const EditMatchModal = ({ match, cups, stages, onClose, onSubmit }) => {
             ))}
           </select>
         )}
-        <label className="flex items-center">
+        <div className="space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isFeatured}
+              onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Featured Match</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isSponsored}
+              onChange={(e) => setFormData({ ...formData, isSponsored: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Sponsored Match</span>
+          </label>
+        </div>
+        
+        {/* Sponsored Images - Show when sponsored is checked */}
+        {formData.isSponsored && (
+          <div className="border p-4 rounded-lg dark:border-gray-700">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Sponsored Images (optional)
+            </label>
+            <div className="space-y-2">
+              {formData.sponsoredImages.map((img, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <img src={img} alt={`Sponsor ${idx + 1}`} className="w-16 h-16 object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newImages = formData.sponsoredImages.filter((_, i) => i !== idx);
+                      setFormData({ ...formData, sponsoredImages: newImages });
+                    }}
+                    className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <ImageUpload
+                label="Add Sponsored Image"
+                value=""
+                onChange={(url) => {
+                  if (url) {
+                    setFormData({ ...formData, sponsoredImages: [...formData.sponsoredImages, url] });
+                  }
+                }}
+                folder="wergame/sponsored"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Locked Time */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Locked Time (optional) - When predictions should be locked
+          </label>
           <input
-            type="checkbox"
-            checked={formData.isFeatured}
-            onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
-            className="mr-2"
+            type="datetime-local"
+            value={formData.lockedTime}
+            onChange={(e) => setFormData({ ...formData, lockedTime: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
-          <span className="text-gray-700 dark:text-gray-300">Featured Match</span>
-        </label>
+        </div>
+
         <div className="flex space-x-2">
           <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
             Update
@@ -2969,6 +3176,9 @@ const EditPollModal = ({ poll, cups, onClose, onSubmit }) => {
     type: poll.type || 'match',
     cup: poll.cup?._id || poll.cup || '',
     isFeatured: poll.isFeatured || false,
+    isSponsored: poll.isSponsored || false,
+    sponsoredImages: poll.sponsoredImages || [],
+    lockedTime: poll.lockedTime ? new Date(poll.lockedTime).toISOString().slice(0, 16) : '',
     optionType: poll.optionType || 'normal',
     options: poll.options ? poll.options.map(opt => ({ text: opt.text || '', image: opt.image || '', liquidity: opt.liquidity || '' })) : [],
   });
@@ -3122,15 +3332,76 @@ const EditPollModal = ({ poll, cups, onClose, onSubmit }) => {
           </div>
         )}
         
-        <label className="flex items-center">
+        <div className="space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isFeatured}
+              onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Featured Poll</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.isSponsored}
+              onChange={(e) => setFormData({ ...formData, isSponsored: e.target.checked })}
+              className="mr-2"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Sponsored Poll</span>
+          </label>
+        </div>
+        
+        {/* Sponsored Images - Show when sponsored is checked */}
+        {formData.isSponsored && (
+          <div className="border p-4 rounded-lg dark:border-gray-700">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Sponsored Images (optional)
+            </label>
+            <div className="space-y-2">
+              {formData.sponsoredImages.map((img, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <img src={img} alt={`Sponsor ${idx + 1}`} className="w-16 h-16 object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newImages = formData.sponsoredImages.filter((_, i) => i !== idx);
+                      setFormData({ ...formData, sponsoredImages: newImages });
+                    }}
+                    className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <ImageUpload
+                label="Add Sponsored Image"
+                value=""
+                onChange={(url) => {
+                  if (url) {
+                    setFormData({ ...formData, sponsoredImages: [...formData.sponsoredImages, url] });
+                  }
+                }}
+                folder="wergame/sponsored"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Locked Time */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Locked Time (optional) - When predictions should be locked
+          </label>
           <input
-            type="checkbox"
-            checked={formData.isFeatured}
-            onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
-            className="mr-2"
+            type="datetime-local"
+            value={formData.lockedTime}
+            onChange={(e) => setFormData({ ...formData, lockedTime: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
           />
-          <span className="text-gray-700 dark:text-gray-300">Featured Poll</span>
-        </label>
+        </div>
+
         <div className="flex space-x-2">
           <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
             Update
@@ -3150,22 +3421,39 @@ const PollStatusModal = ({ poll, onClose, onSubmit }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(poll._id, status);
+    const updates = { status };
+    // If status is set to locked, immediately lock (override any locked time)
+    if (status === 'locked') {
+      updates.lockedTime = new Date().toISOString();
+    }
+    onSubmit(poll._id, updates);
+    onClose();
   };
 
   return (
     <Modal isOpen={true} onClose={onClose} title="Update Poll Status">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-          required
-        >
-          <option value="upcoming">Upcoming</option>
-          <option value="active">Active</option>
-          <option value="settled">Settled</option>
-        </select>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Status
+          </label>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            required
+          >
+            <option value="upcoming">Upcoming</option>
+            <option value="active">Active</option>
+            <option value="locked">Locked</option>
+            <option value="settled">Settled</option>
+          </select>
+          {status === 'locked' && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+              Setting status to "Locked" will immediately lock predictions for this poll.
+            </p>
+          )}
+        </div>
         <div className="flex space-x-2">
           <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
             Update

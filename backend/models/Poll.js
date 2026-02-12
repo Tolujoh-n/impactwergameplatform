@@ -46,7 +46,7 @@ const pollSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['upcoming', 'active', 'settled'],
+    enum: ['upcoming', 'active', 'settled', 'locked'],
     default: 'active',
   },
   result: {
@@ -75,6 +75,16 @@ const pollSchema = new mongoose.Schema({
   isFeatured: {
     type: Boolean,
     default: false,
+  },
+  isSponsored: {
+    type: Boolean,
+    default: false,
+  },
+  sponsoredImages: [{
+    type: String,
+  }],
+  lockedTime: {
+    type: Date,
   },
   isResolved: {
     type: Boolean,

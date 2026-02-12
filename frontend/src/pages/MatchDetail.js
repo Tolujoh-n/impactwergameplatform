@@ -18,6 +18,19 @@ const MatchDetail = () => {
   const isPoll = !!pollId;
   const itemId = pollId || matchId;
 
+  // Check if predictions are locked
+  const isLocked = useCallback(() => {
+    const item = match || poll;
+    if (!item) return false;
+    if (item.status === 'locked') return true;
+    if (item.lockedTime) {
+      const now = new Date();
+      const lockedTime = new Date(item.lockedTime);
+      return now >= lockedTime;
+    }
+    return false;
+  }, [match, poll]);
+
   const fetchData = useCallback(async () => {
     try {
       if (isPoll) {
@@ -61,9 +74,15 @@ const MatchDetail = () => {
       return;
     }
 
+    // Check if locked
+    const item = match || poll;
+    if (item && (item.status === 'locked' || (item.lockedTime && new Date() >= new Date(item.lockedTime)))) {
+      showNotification('Predictions are locked for this match/poll', 'error');
+      return;
+    }
+
     try {
       // Check if prediction exists and item is still upcoming
-      const item = match || poll;
       const canUpdate = prediction && item && (item.status === 'upcoming' || item.status === 'active');
       
       if (type === 'free') {
@@ -156,24 +175,27 @@ const MatchDetail = () => {
 
   const item = match || poll;
 
+  const locked = isLocked();
+
   if (type === 'free') {
-    return <FreeMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} />;
+    return <FreeMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} locked={locked} />;
   } else if (type === 'boost') {
-    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onStakeAction={handleStakeAction} onClaim={handleClaim} navigate={navigate} />;
+    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onStakeAction={handleStakeAction} onClaim={handleClaim} navigate={navigate} locked={locked} />;
   } else if (type === 'market') {
-    return <MarketMatchView item={item} isPoll={isPoll} navigate={navigate} user={user} showNotification={showNotification} />;
+    return <MarketMatchView item={item} isPoll={isPoll} navigate={navigate} user={user} showNotification={showNotification} locked={locked} />;
   }
 
   return null;
 };
 
-const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate }) => {
+const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate, locked = false }) => {
   const [showPredictModal, setShowPredictModal] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState(null);
   
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
   const hasWon = prediction && prediction.status === 'won';
+  const canPredict = !locked && !isResolved && (item.status === 'upcoming' || item.status === 'active');
   
   const getOutcomeOptions = () => {
     if (isPoll) {
@@ -266,7 +288,7 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
                   Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
                 </p>
               )}
-              {!isResolved && (item.status === 'upcoming' || item.status === 'active') && (
+              {canPredict && (
                 <button
                   onClick={() => {
                     setSelectedOutcome(prediction.outcome);
@@ -276,6 +298,11 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
                 >
                   Update Prediction
                 </button>
+              )}
+              {locked && (
+                <p className="mt-4 px-4 py-2 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
+                  Predictions are locked for this match/poll
+                </p>
               )}
               {hasWon && isResolved && (
                 <button
@@ -328,11 +355,16 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
                       <button
                         key={optionText}
                         onClick={() => {
-                          onPredict(optionText);
-                          setShowPredictModal(false);
+                          if (!locked) {
+                            onPredict(optionText);
+                            setShowPredictModal(false);
+                          }
                         }}
+                        disabled={locked}
                         className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-3 ${
-                          selectedOutcome === optionText
+                          locked
+                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                            : selectedOutcome === optionText
                             ? 'bg-blue-500 text-white'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                         }`}
@@ -360,7 +392,7 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
   );
 };
 
-const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, onClaim, navigate }) => {
+const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, onClaim, navigate, locked = false }) => {
   const [showPredictModal, setShowPredictModal] = useState(false);
   const [showStakeModal, setShowStakeModal] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState(null);
@@ -371,7 +403,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
   const hasWon = prediction && prediction.status === 'won';
-  const canModify = !isResolved && (item.status === 'upcoming' || item.status === 'active');
+  const canModify = !locked && !isResolved && (item.status === 'upcoming' || item.status === 'active');
   
   const getOutcomeOptions = () => {
     if (isPoll) {
@@ -474,32 +506,58 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                 <div className="flex flex-wrap gap-2 mt-4">
                   <button
                     onClick={() => {
-                      setSelectedOutcome(prediction.outcome);
-                      setShowPredictModal(true);
+                      if (!locked) {
+                        setSelectedOutcome(prediction.outcome);
+                        setShowPredictModal(true);
+                      }
                     }}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    disabled={locked}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      locked
+                        ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                    }`}
                   >
                     Update Prediction
                   </button>
                   <button
                     onClick={() => {
-                      setStakeAction('add');
-                      setShowStakeModal(true);
+                      if (!locked) {
+                        setStakeAction('add');
+                        setShowStakeModal(true);
+                      }
                     }}
-                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                    disabled={locked}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      locked
+                        ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                        : 'bg-green-500 text-white hover:bg-green-600'
+                    }`}
                   >
                     Add Stake
                   </button>
                   <button
                     onClick={() => {
-                      setStakeAction('withdraw');
-                      setShowStakeModal(true);
+                      if (!locked) {
+                        setStakeAction('withdraw');
+                        setShowStakeModal(true);
+                      }
                     }}
-                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                    disabled={locked}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      locked
+                        ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                        : 'bg-orange-500 text-white hover:bg-orange-600'
+                    }`}
                   >
                     Withdraw Stake
                   </button>
                 </div>
+              )}
+              {locked && (
+                <p className="mt-4 px-4 py-2 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
+                  Predictions are locked for this match/poll
+                </p>
               )}
               {hasWon && isResolved && (
                 <div>
@@ -567,10 +625,15 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                       <button
                         key={optionText}
                         onClick={() => {
-                          setSelectedOutcome(optionText);
+                          if (!locked) {
+                            setSelectedOutcome(optionText);
+                          }
                         }}
+                        disabled={locked}
                         className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-3 ${
-                          selectedOutcome === optionText
+                          locked
+                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                            : selectedOutcome === optionText
                             ? 'bg-blue-500 text-white'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                         }`}
@@ -606,19 +669,25 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                 <div className="flex space-x-2">
                   <button
                     onClick={() => {
-                      if (prediction && selectedOutcome) {
-                        // Update existing prediction - amount is automatically preserved
-                        onPredict(selectedOutcome);
-                        setShowPredictModal(false);
-                      } else if (selectedOutcome && amount) {
-                        // Create new prediction
-                        onPredict(selectedOutcome, amount);
-                        setShowPredictModal(false);
-                        setAmount('');
+                      if (!locked) {
+                        if (prediction && selectedOutcome) {
+                          // Update existing prediction - amount is automatically preserved
+                          onPredict(selectedOutcome);
+                          setShowPredictModal(false);
+                        } else if (selectedOutcome && amount) {
+                          // Create new prediction
+                          onPredict(selectedOutcome, amount);
+                          setShowPredictModal(false);
+                          setAmount('');
+                        }
                       }
                     }}
-                    disabled={!selectedOutcome || (!prediction && !amount)}
-                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={locked || !selectedOutcome || (!prediction && !amount)}
+                    className={`flex-1 px-4 py-2 rounded-lg ${
+                      locked
+                        ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     {prediction ? 'Update' : 'Confirm'}
                   </button>
@@ -671,14 +740,17 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                 <div className="flex space-x-2">
                   <button
                     onClick={() => {
-                      if (stakeAmount) {
+                      if (!locked && stakeAmount) {
                         onStakeAction(prediction._id, stakeAction, stakeAmount);
                         setShowStakeModal(false);
                         setStakeAmount('');
                       }
                     }}
+                    disabled={locked}
                     className={`flex-1 px-4 py-2 rounded-lg ${
-                      stakeAction === 'add' 
+                      locked
+                        ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                        : stakeAction === 'add' 
                         ? 'bg-green-500 text-white hover:bg-green-600' 
                         : 'bg-orange-500 text-white hover:bg-orange-600'
                     }`}
@@ -704,7 +776,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   );
 };
 
-const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => {
+const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locked = false }) => {
   const [selectedOption, setSelectedOption] = useState(null);
   const [tradeType, setTradeType] = useState('buy');
   const [amount, setAmount] = useState('');
@@ -793,6 +865,12 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
   const handleTrade = async () => {
     if (!user) {
       showNotification('Please login to trade', 'warning');
+      return;
+    }
+
+    // Check if locked
+    if (locked || item.status === 'locked' || (item.lockedTime && new Date() >= new Date(item.lockedTime))) {
+      showNotification('Trading is locked for this match/poll', 'error');
       return;
     }
 
@@ -1061,6 +1139,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                 Trade
               </h2>
 
+              {/* Locked Message */}
+              {locked && (
+                <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
+                  <p className="text-sm font-semibold">Trading is locked for this match/poll</p>
+                  {item.lockedTime && (
+                    <p className="text-xs mt-1">Locked since: {new Date(item.lockedTime).toLocaleString()}</p>
+                  )}
+                </div>
+              )}
+
               {/* Trade Type Toggle */}
               <div className="flex mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
                 <button
@@ -1098,9 +1186,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                         return (
                           <button
                             key={idx}
-                            onClick={() => setSelectedOption(opt.text)}
+                            onClick={() => {
+                              if (!locked) {
+                                setSelectedOption(opt.text);
+                              }
+                            }}
+                            disabled={locked}
                             className={`px-4 py-3 rounded-lg font-semibold transition-colors flex items-center gap-3 ${
-                              selectedOption === opt.text
+                              locked
+                                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                : selectedOption === opt.text
                                 ? 'bg-blue-500 text-white'
                                 : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                             }`}
@@ -1119,9 +1214,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={() => setSelectedOption('yes')}
+                        onClick={() => {
+                          if (!locked) {
+                            setSelectedOption('yes');
+                          }
+                        }}
+                        disabled={locked}
                         className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
-                          selectedOption === 'yes'
+                          locked
+                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                            : selectedOption === 'yes'
                             ? 'bg-green-500 text-white'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                         }`}
@@ -1130,9 +1232,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                         <div className="text-xs mt-1">{(prices.yes * 100).toFixed(1)}%</div>
                       </button>
                       <button
-                        onClick={() => setSelectedOption('no')}
+                        onClick={() => {
+                          if (!locked) {
+                            setSelectedOption('no');
+                          }
+                        }}
+                        disabled={locked}
                         className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
-                          selectedOption === 'no'
+                          locked
+                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                            : selectedOption === 'no'
                             ? 'bg-red-500 text-white'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                         }`}
@@ -1145,9 +1254,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     <button
-                      onClick={() => setSelectedOption('teamA')}
+                      onClick={() => {
+                        if (!locked) {
+                          setSelectedOption('teamA');
+                        }
+                      }}
+                      disabled={locked}
                       className={`px-3 py-3 rounded-lg font-semibold transition-colors text-sm flex flex-col items-center ${
-                        selectedOption === 'teamA'
+                        locked
+                          ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                          : selectedOption === 'teamA'
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
@@ -1160,9 +1276,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                       <div className="text-xs mt-1">{(prices.teamA * 100).toFixed(1)}%</div>
                     </button>
                     <button
-                      onClick={() => setSelectedOption('draw')}
+                      onClick={() => {
+                        if (!locked) {
+                          setSelectedOption('draw');
+                        }
+                      }}
+                      disabled={locked}
                       className={`px-3 py-3 rounded-lg font-semibold transition-colors text-sm ${
-                        selectedOption === 'draw'
+                        locked
+                          ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                          : selectedOption === 'draw'
                           ? 'bg-purple-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
@@ -1171,9 +1294,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                       <div className="text-xs mt-1">{(prices.draw * 100).toFixed(1)}%</div>
                     </button>
                     <button
-                      onClick={() => setSelectedOption('teamB')}
+                      onClick={() => {
+                        if (!locked) {
+                          setSelectedOption('teamB');
+                        }
+                      }}
+                      disabled={locked}
                       className={`px-3 py-3 rounded-lg font-semibold transition-colors text-sm flex flex-col items-center ${
-                        selectedOption === 'teamB'
+                        locked
+                          ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                          : selectedOption === 'teamB'
                           ? 'bg-red-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
@@ -1201,13 +1331,25 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                     min="0"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    disabled={locked}
+                    className={`flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white ${
+                      locked ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                     placeholder={tradeType === 'buy' ? "0.0" : "0"}
                   />
                   {tradeType === 'sell' && prediction && prediction.shares > 0 && (
                     <button
-                      onClick={() => setAmount('max')}
-                      className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
+                      onClick={() => {
+                        if (!locked) {
+                          setAmount('max');
+                        }
+                      }}
+                      disabled={locked}
+                      className={`px-3 py-2 rounded-lg text-sm ${
+                        locked
+                          ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      }`}
                     >
                       Max
                     </button>
@@ -1228,9 +1370,11 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
               {/* Trade Button */}
               <button
                 onClick={handleTrade}
-                disabled={tradeType === 'buy' ? (!selectedOption || !amount) : (!prediction || !amount || (amount !== 'max' && parseFloat(amount) > (prediction.shares || 0)))}
+                disabled={locked || (tradeType === 'buy' ? (!selectedOption || !amount) : (!prediction || !amount || (amount !== 'max' && parseFloat(amount) > (prediction.shares || 0))))}
                 className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
-                  tradeType === 'buy'
+                  locked
+                    ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                    : tradeType === 'buy'
                     ? 'bg-green-500 hover:bg-green-600 text-white'
                     : 'bg-red-500 hover:bg-red-600 text-white'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
