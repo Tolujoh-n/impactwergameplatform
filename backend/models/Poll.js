@@ -13,6 +13,28 @@ const pollSchema = new mongoose.Schema({
     enum: ['match', 'team', 'stage', 'award'],
     required: true,
   },
+  optionType: {
+    type: String,
+    enum: ['normal', 'options'],
+    default: 'normal',
+  },
+  options: [{
+    text: {
+      type: String,
+      required: true,
+    },
+    image: {
+      type: String,
+    },
+    liquidity: {
+      type: Number,
+      default: 0,
+    },
+    shares: {
+      type: Number,
+      default: 0,
+    },
+  }],
   cup: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Cup',

@@ -3,6 +3,7 @@ import api from '../utils/api';
 import { useNotification } from '../components/Notification';
 import Modal from '../components/Modal';
 import TiptapEditor from '../components/TiptapEditor';
+import ImageUpload from '../components/ImageUpload';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('matches');
@@ -184,9 +185,10 @@ const Admin = () => {
     }
   };
 
-  const handleResolvePoll = async (pollId, result) => {
+  const handleResolvePoll = async (pollId, result, optionIndex) => {
     try {
-      await api.post(`/admin/polls/${pollId}/resolve`, { result });
+      const payload = optionIndex !== undefined ? { optionIndex } : { result };
+      await api.post(`/admin/polls/${pollId}/resolve`, payload);
       fetchData();
       showNotification('Poll resolved successfully!', 'success');
     } catch (error) {
@@ -598,6 +600,8 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
     marketTeamBLiquidity: '',
     marketDrawLiquidity: '',
     isFeatured: false,
+    teamAImage: '',
+    teamBImage: '',
   });
   const [availableStages, setAvailableStages] = useState([]);
 
@@ -640,22 +644,38 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
     <Modal isOpen={true} onClose={onClose} title="Create Match" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <input
-            type="text"
-            placeholder="Team A"
-            value={formData.teamA}
-            onChange={(e) => setFormData({ ...formData, teamA: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            required
-          />
-          <input
-            type="text"
-            placeholder="Team B"
-            value={formData.teamB}
-            onChange={(e) => setFormData({ ...formData, teamB: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            required
-          />
+          <div>
+            <input
+              type="text"
+              placeholder="Team A"
+              value={formData.teamA}
+              onChange={(e) => setFormData({ ...formData, teamA: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white mb-2"
+              required
+            />
+            <ImageUpload
+              label="Team A Image"
+              value={formData.teamAImage}
+              onChange={(url) => setFormData({ ...formData, teamAImage: url })}
+              folder="wergame/teams"
+            />
+          </div>
+          <div>
+            <input
+              type="text"
+              placeholder="Team B"
+              value={formData.teamB}
+              onChange={(e) => setFormData({ ...formData, teamB: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white mb-2"
+              required
+            />
+            <ImageUpload
+              label="Team B Image"
+              value={formData.teamBImage}
+              onChange={(url) => setFormData({ ...formData, teamBImage: url })}
+              folder="wergame/teams"
+            />
+          </div>
         </div>
         <input
           type="datetime-local"
@@ -776,6 +796,7 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
 
 const ResolveModal = ({ item, type, onClose, onSubmit }) => {
   const [result, setResult] = useState('');
+  const [optionIndex, setOptionIndex] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -789,17 +810,26 @@ const ResolveModal = ({ item, type, onClose, onSubmit }) => {
       } else if (result === 'Draw') {
         backendResult = 'draw';
       }
+      onSubmit(item._id, backendResult);
     } else {
-      // For polls, normalize to uppercase
-      backendResult = result.toUpperCase();
+      // For polls
+      if (item.optionType === 'options') {
+        // Option-based poll - send optionIndex
+        onSubmit(item._id, null, parseInt(optionIndex));
+      } else {
+        // Normal Yes/No poll
+        backendResult = result.toUpperCase();
+        onSubmit(item._id, backendResult);
+      }
     }
-    onSubmit(item._id, backendResult);
     onClose();
   };
 
   const options = type === 'match' 
     ? [item.teamA, 'Draw', item.teamB]
-    : ['YES', 'NO'];
+    : (item.optionType === 'options' && item.options) 
+      ? item.options.map((opt, idx) => ({ text: opt.text, index: idx, image: opt.image }))
+      : ['YES', 'NO'];
 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Resolve ${type === 'match' ? 'Match' : 'Poll'}`}>
@@ -808,17 +838,52 @@ const ResolveModal = ({ item, type, onClose, onSubmit }) => {
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Result
           </label>
-          <select
-            value={result}
-            onChange={(e) => setResult(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            required
-          >
-            <option value="">Select result</option>
-            {options.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
+          {type === 'poll' && item.optionType === 'options' ? (
+            <div className="space-y-2">
+              {options.map((opt) => (
+                <label
+                  key={opt.index}
+                  className={`flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                    optionIndex === opt.index.toString() ? 'border-blue-500 bg-blue-50 dark:bg-blue-900' : ''
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="pollOption"
+                    value={opt.index}
+                    checked={optionIndex === opt.index.toString()}
+                    onChange={(e) => setOptionIndex(e.target.value)}
+                    className="mr-3"
+                    required
+                  />
+                  {opt.image && (
+                    <img src={opt.image} alt={opt.text} className="w-10 h-10 object-cover rounded-full mr-3" />
+                  )}
+                  <span className="text-gray-900 dark:text-white font-medium">{opt.text}</span>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <select
+              value={type === 'poll' && item.optionType === 'options' ? optionIndex : result}
+              onChange={(e) => {
+                if (type === 'poll' && item.optionType === 'options') {
+                  setOptionIndex(e.target.value);
+                } else {
+                  setResult(e.target.value);
+                }
+              }}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              required
+            >
+              <option value="">Select result</option>
+              {options.map((opt) => (
+                <option key={typeof opt === 'string' ? opt : opt.index} value={typeof opt === 'string' ? opt : opt.index}>
+                  {typeof opt === 'string' ? opt : opt.text}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="flex space-x-2">
           <button
@@ -1073,18 +1138,52 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
     description: '',
     type: 'match',
     cup: '',
+    optionType: 'normal',
     marketYesLiquidity: '',
     marketNoLiquidity: '',
     isFeatured: false,
+    options: [],
   });
+
+  const addOption = () => {
+    setFormData({
+      ...formData,
+      options: [...formData.options, { text: '', image: '', liquidity: '' }],
+    });
+  };
+
+  const removeOption = (index) => {
+    const newOptions = formData.options.filter((_, i) => i !== index);
+    setFormData({ ...formData, options: newOptions });
+  };
+
+  const updateOption = (index, field, value) => {
+    const newOptions = [...formData.options];
+    newOptions[index] = { ...newOptions[index], [field]: value };
+    setFormData({ ...formData, options: newOptions });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit({
+    const submitData = {
       ...formData,
-      marketYesLiquidity: parseFloat(formData.marketYesLiquidity) || 0,
-      marketNoLiquidity: parseFloat(formData.marketNoLiquidity) || 0,
-    });
+      isFeatured: formData.isFeatured || false,
+    };
+
+    if (formData.optionType === 'options') {
+      // Option-based poll
+      submitData.options = formData.options.map(opt => ({
+        text: opt.text,
+        image: opt.image || undefined,
+        liquidity: parseFloat(opt.liquidity) || 0,
+      }));
+    } else {
+      // Normal Yes/No poll
+      submitData.marketYesLiquidity = parseFloat(formData.marketYesLiquidity) || 0;
+      submitData.marketNoLiquidity = parseFloat(formData.marketNoLiquidity) || 0;
+    }
+
+    onSubmit(submitData);
     onClose();
   };
 
@@ -1127,24 +1226,104 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
             <option key={cup._id} value={cup._id}>{cup.name}</option>
           ))}
         </select>
-        <div className="grid grid-cols-2 gap-4">
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Market YES Liquidity (ETH)"
-            value={formData.marketYesLiquidity}
-            onChange={(e) => setFormData({ ...formData, marketYesLiquidity: e.target.value })}
+        
+        {/* Poll Type Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Poll Type
+          </label>
+          <select
+            value={formData.optionType}
+            onChange={(e) => setFormData({ ...formData, optionType: e.target.value, options: e.target.value === 'normal' ? [] : formData.options })}
             className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-          />
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Market NO Liquidity (ETH)"
-            value={formData.marketNoLiquidity}
-            onChange={(e) => setFormData({ ...formData, marketNoLiquidity: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-          />
+          >
+            <option value="normal">Normal (Yes/No)</option>
+            <option value="options">Options (Custom)</option>
+          </select>
         </div>
+
+        {/* Normal Yes/No Poll Liquidity */}
+        {formData.optionType === 'normal' && (
+          <div className="grid grid-cols-2 gap-4">
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Market YES Liquidity (ETH)"
+              value={formData.marketYesLiquidity}
+              onChange={(e) => setFormData({ ...formData, marketYesLiquidity: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            />
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Market NO Liquidity (ETH)"
+              value={formData.marketNoLiquidity}
+              onChange={(e) => setFormData({ ...formData, marketNoLiquidity: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+        )}
+
+        {/* Option-based Poll Options */}
+        {formData.optionType === 'options' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Poll Options
+              </label>
+              <button
+                type="button"
+                onClick={addOption}
+                className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+              >
+                + Add Option
+              </button>
+            </div>
+            {formData.options.map((option, index) => (
+              <div key={index} className="border rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Option {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeOption(index)}
+                    className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Option text"
+                  value={option.text}
+                  onChange={(e) => updateOption(index, 'text', e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                  required
+                />
+                <ImageUpload
+                  label="Option Image"
+                  value={option.image}
+                  onChange={(url) => updateOption(index, 'image', url)}
+                  folder="wergame/poll-options"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Initial Liquidity (ETH)"
+                  value={option.liquidity}
+                  onChange={(e) => updateOption(index, 'liquidity', e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+            ))}
+            {formData.options.length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                Click "Add Option" to create poll options
+              </p>
+            )}
+          </div>
+        )}
         <label className="flex items-center">
           <input
             type="checkbox"
@@ -2593,6 +2772,8 @@ const EditMatchModal = ({ match, cups, stages, onClose, onSubmit }) => {
     stage: match.stage?._id || match.stage || '',
     stageName: match.stageName || '',
     isFeatured: match.isFeatured || false,
+    teamAImage: match.teamAImage || '',
+    teamBImage: match.teamBImage || '',
   });
   const [availableStages, setAvailableStages] = useState([]);
 
@@ -2620,22 +2801,38 @@ const EditMatchModal = ({ match, cups, stages, onClose, onSubmit }) => {
     <Modal isOpen={true} onClose={onClose} title="Edit Match" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <input
-            type="text"
-            placeholder="Team A"
-            value={formData.teamA}
-            onChange={(e) => setFormData({ ...formData, teamA: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            required
-          />
-          <input
-            type="text"
-            placeholder="Team B"
-            value={formData.teamB}
-            onChange={(e) => setFormData({ ...formData, teamB: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            required
-          />
+          <div>
+            <input
+              type="text"
+              placeholder="Team A"
+              value={formData.teamA}
+              onChange={(e) => setFormData({ ...formData, teamA: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white mb-2"
+              required
+            />
+            <ImageUpload
+              label="Team A Image"
+              value={formData.teamAImage}
+              onChange={(url) => setFormData({ ...formData, teamAImage: url })}
+              folder="wergame/teams"
+            />
+          </div>
+          <div>
+            <input
+              type="text"
+              placeholder="Team B"
+              value={formData.teamB}
+              onChange={(e) => setFormData({ ...formData, teamB: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white mb-2"
+              required
+            />
+            <ImageUpload
+              label="Team B Image"
+              value={formData.teamBImage}
+              onChange={(url) => setFormData({ ...formData, teamBImage: url })}
+              folder="wergame/teams"
+            />
+          </div>
         </div>
         <input
           type="datetime-local"
@@ -2772,11 +2969,41 @@ const EditPollModal = ({ poll, cups, onClose, onSubmit }) => {
     type: poll.type || 'match',
     cup: poll.cup?._id || poll.cup || '',
     isFeatured: poll.isFeatured || false,
+    optionType: poll.optionType || 'normal',
+    options: poll.options ? poll.options.map(opt => ({ text: opt.text || '', image: opt.image || '', liquidity: opt.liquidity || '' })) : [],
   });
+
+  const addOption = () => {
+    setFormData({
+      ...formData,
+      options: [...formData.options, { text: '', image: '', liquidity: '' }],
+    });
+  };
+
+  const removeOption = (index) => {
+    const newOptions = formData.options.filter((_, i) => i !== index);
+    setFormData({ ...formData, options: newOptions });
+  };
+
+  const updateOption = (index, field, value) => {
+    const newOptions = [...formData.options];
+    newOptions[index] = { ...newOptions[index], [field]: value };
+    setFormData({ ...formData, options: newOptions });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    const submitData = { ...formData };
+    
+    if (formData.optionType === 'options') {
+      submitData.options = formData.options.map(opt => ({
+        text: opt.text,
+        image: opt.image || undefined,
+        liquidity: parseFloat(opt.liquidity) || 0,
+      }));
+    }
+    
+    onSubmit(submitData);
   };
 
   return (
@@ -2818,6 +3045,83 @@ const EditPollModal = ({ poll, cups, onClose, onSubmit }) => {
             <option key={cup._id} value={cup._id}>{cup.name}</option>
           ))}
         </select>
+        
+        {/* Poll Type Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Poll Type
+          </label>
+          <select
+            value={formData.optionType}
+            onChange={(e) => setFormData({ ...formData, optionType: e.target.value, options: e.target.value === 'normal' ? [] : formData.options })}
+            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+          >
+            <option value="normal">Normal (Yes/No)</option>
+            <option value="options">Options (Custom)</option>
+          </select>
+        </div>
+
+        {/* Option-based Poll Options */}
+        {formData.optionType === 'options' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Poll Options
+              </label>
+              <button
+                type="button"
+                onClick={addOption}
+                className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+              >
+                + Add Option
+              </button>
+            </div>
+            {formData.options.map((option, index) => (
+              <div key={index} className="border rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Option {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeOption(index)}
+                    className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Option text"
+                  value={option.text}
+                  onChange={(e) => updateOption(index, 'text', e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                  required
+                />
+                <ImageUpload
+                  label="Option Image"
+                  value={option.image}
+                  onChange={(url) => updateOption(index, 'image', url)}
+                  folder="wergame/poll-options"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Initial Liquidity (ETH)"
+                  value={option.liquidity}
+                  onChange={(e) => updateOption(index, 'liquidity', e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+            ))}
+            {formData.options.length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                Click "Add Option" to create poll options
+              </p>
+            )}
+          </div>
+        )}
+        
         <label className="flex items-center">
           <input
             type="checkbox"
@@ -2880,45 +3184,91 @@ const AddPollLiquidityModal = ({ poll, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
     yesLiquidity: '',
     noLiquidity: '',
+    optionIndex: '',
+    optionLiquidity: '',
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit({
-      yesLiquidity: parseFloat(formData.yesLiquidity) || 0,
-      noLiquidity: parseFloat(formData.noLiquidity) || 0,
-    });
+    if (poll.optionType === 'options') {
+      onSubmit({
+        optionIndex: parseInt(formData.optionIndex),
+        optionLiquidity: parseFloat(formData.optionLiquidity) || 0,
+      });
+    } else {
+      onSubmit({
+        yesLiquidity: parseFloat(formData.yesLiquidity) || 0,
+        noLiquidity: parseFloat(formData.noLiquidity) || 0,
+      });
+    }
   };
 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Add Liquidity - ${poll.question}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            YES Liquidity (ETH)
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            value={formData.yesLiquidity}
-            onChange={(e) => setFormData({ ...formData, yesLiquidity: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            placeholder="0.0"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            NO Liquidity (ETH)
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            value={formData.noLiquidity}
-            onChange={(e) => setFormData({ ...formData, noLiquidity: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
-            placeholder="0.0"
-          />
-        </div>
+        {poll.optionType === 'options' ? (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Select Option
+            </label>
+            <select
+              value={formData.optionIndex}
+              onChange={(e) => setFormData({ ...formData, optionIndex: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              required
+            >
+              <option value="">Select an option</option>
+              {poll.options && poll.options.map((option, index) => (
+                <option key={index} value={index}>
+                  {option.text} (Current: {option.liquidity || 0} ETH)
+                </option>
+              ))}
+            </select>
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Liquidity to Add (ETH)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.optionLiquidity}
+                onChange={(e) => setFormData({ ...formData, optionLiquidity: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                placeholder="0.0"
+                required
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                YES Liquidity (ETH)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.yesLiquidity}
+                onChange={(e) => setFormData({ ...formData, yesLiquidity: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                placeholder="0.0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                NO Liquidity (ETH)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.noLiquidity}
+                onChange={(e) => setFormData({ ...formData, noLiquidity: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                placeholder="0.0"
+              />
+            </div>
+          </>
+        )}
         <div className="flex space-x-2">
           <button type="submit" className="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600">
             Add Liquidity

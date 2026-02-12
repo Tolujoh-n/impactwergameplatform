@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
+import Modal from '../components/Modal';
 
 const CupPage = () => {
   const { cupSlug } = useParams();
@@ -11,6 +12,7 @@ const CupPage = () => {
   const [matches, setMatches] = useState([]);
   const [awardPolls, setAwardPolls] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showTeamsModal, setShowTeamsModal] = useState(false);
 
   const fetchCupData = useCallback(async () => {
     try {
@@ -180,6 +182,65 @@ const CupPage = () => {
 
           {/* Main Content */}
           <div className="lg:col-span-3 space-y-6">
+            {/* Team Images Section - Before Featured Section */}
+            {selectedStage && (() => {
+              const teams = new Map();
+              filteredMatches.forEach(match => {
+                if (match.teamA && match.teamAImage) {
+                  teams.set(match.teamA, match.teamAImage);
+                }
+                if (match.teamB && match.teamBImage) {
+                  teams.set(match.teamB, match.teamBImage);
+                }
+              });
+              const teamArray = Array.from(teams.entries()).map(([name, image]) => ({ name, image }));
+              const displayCount = 8;
+              const showMore = teamArray.length > displayCount;
+              
+              if (teamArray.length > 0) {
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                        Teams in {stages.find(s => s._id === selectedStage)?.name || 'Current Stage'}
+                      </h2>
+                      {showMore && (
+                        <button
+                          onClick={() => setShowTeamsModal(true)}
+                          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+                        >
+                          View All ({teamArray.length} teams)
+                        </button>
+                      )}
+                      {!showMore && teamArray.length > 0 && (
+                        <button
+                          onClick={() => setShowTeamsModal(true)}
+                          className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
+                        >
+                          View All
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
+                      {teamArray.slice(0, displayCount).map((team, idx) => (
+                        <div key={idx} className="flex flex-col items-center group cursor-pointer" onClick={() => setShowTeamsModal(true)}>
+                          <img
+                            src={team.image}
+                            alt={team.name}
+                            className="w-16 h-16 object-cover rounded-full border-2 border-gray-200 dark:border-gray-700 mb-2 group-hover:border-blue-500 dark:group-hover:border-blue-400 transition-colors"
+                          />
+                          <p className="text-xs text-center text-gray-700 dark:text-gray-300 font-medium truncate w-full">
+                            {team.name}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* Featured Match */}
             {featuredMatch && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
@@ -224,6 +285,45 @@ const CupPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Teams Modal */}
+      {showTeamsModal && selectedStage && (() => {
+        const teams = new Map();
+        filteredMatches.forEach(match => {
+          if (match.teamA && match.teamAImage) {
+            teams.set(match.teamA, match.teamAImage);
+          }
+          if (match.teamB && match.teamBImage) {
+            teams.set(match.teamB, match.teamBImage);
+          }
+        });
+        const teamArray = Array.from(teams.entries()).map(([name, image]) => ({ name, image }));
+        
+        if (teamArray.length === 0) {
+          return null;
+        }
+        
+        return (
+          <Modal isOpen={true} onClose={() => setShowTeamsModal(false)} title={`All Teams - ${stages.find(s => s._id === selectedStage)?.name || 'Current Stage'}`} size="lg">
+            <div className="max-h-[70vh] overflow-y-auto">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-6 p-2">
+                {teamArray.map((team, idx) => (
+                  <div key={idx} className="flex flex-col items-center">
+                    <img
+                      src={team.image}
+                      alt={team.name}
+                      className="w-20 h-20 object-cover rounded-full border-4 border-gray-200 dark:border-gray-700 mb-3 shadow-md hover:shadow-lg transition-shadow"
+                    />
+                    <p className="text-sm text-center text-gray-700 dark:text-gray-300 font-medium">
+                      {team.name}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 };
@@ -232,10 +332,23 @@ const MatchCard = ({ match, featured = false }) => {
   return (
     <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 ${featured ? 'border-2 border-blue-500' : ''}`}>
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-            {match.teamA} vs {match.teamB}
-          </h3>
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-2">
+            {match.teamAImage && (
+              <img src={match.teamAImage} alt={match.teamA} className="w-10 h-10 object-cover rounded-full" />
+            )}
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              {match.teamA}
+            </h3>
+          </div>
+          <div className="flex items-center gap-3 mb-2">
+            {match.teamBImage && (
+              <img src={match.teamBImage} alt={match.teamB} className="w-10 h-10 object-cover rounded-full" />
+            )}
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              {match.teamB}
+            </h3>
+          </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {new Date(match.date).toLocaleDateString()} • {match.stageName}
           </p>
@@ -296,6 +409,19 @@ const PollCard = ({ poll }) => {
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         {poll.description}
       </p>
+      {/* Show poll options with images if option-based */}
+      {poll.optionType === 'options' && poll.options && poll.options.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {poll.options.map((opt, idx) => (
+            <div key={idx} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+              {opt.image && (
+                <img src={opt.image} alt={opt.text} className="w-8 h-8 object-cover rounded-full" />
+              )}
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{opt.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex items-center space-x-2">
         <Link
           to={`/poll/${poll._id}/free`}

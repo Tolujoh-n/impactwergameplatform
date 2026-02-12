@@ -177,9 +177,16 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
   
   const getOutcomeOptions = () => {
     if (isPoll) {
+      if (item.optionType === 'options' && item.options) {
+        return item.options.map(opt => ({ text: opt.text, image: opt.image }));
+      }
       return ['YES', 'NO'];
     }
-    return [item.teamA, 'Draw', item.teamB];
+    return [
+      { text: item.teamA, image: item.teamAImage },
+      { text: 'Draw', image: null },
+      { text: item.teamB, image: item.teamBImage }
+    ];
   };
 
   const handleBack = () => {
@@ -204,10 +211,28 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
             </svg>
             <span className="font-medium">Back to Cup</span>
           </button>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+          {/* Header with Images */}
+          {!isPoll && (
+            <div className="flex items-center justify-center gap-8 mb-6">
+              <div className="flex flex-col items-center">
+                {item.teamAImage && (
+                  <img src={item.teamAImage} alt={item.teamA} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                )}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamA}</h2>
+              </div>
+              <div className="text-2xl font-bold text-gray-500 dark:text-gray-400">VS</div>
+              <div className="flex flex-col items-center">
+                {item.teamBImage && (
+                  <img src={item.teamBImage} alt={item.teamB} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                )}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamB}</h2>
+              </div>
+            </div>
+          )}
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4 text-center">
             {isPoll ? item.question : `${item.teamA} vs ${item.teamB}`}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
             {isPoll ? item.description : `${new Date(item.date).toLocaleDateString()} • ${item.stageName || ''}`}
           </p>
 
@@ -263,18 +288,25 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
             </div>
           ) : !isResolved ? (
             <div className="space-y-4">
-              {getOutcomeOptions().map((option) => (
-                <button
-                  key={option}
-                  onClick={() => {
-                    setSelectedOutcome(option);
-                    setShowPredictModal(true);
-                  }}
-                  className="w-full px-6 py-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-lg font-semibold text-gray-900 dark:text-white transition-colors"
-                >
-                  {option} {isPoll ? '' : 'Wins'}
-                </button>
-              ))}
+              {getOutcomeOptions().map((option, index) => {
+                const optionText = typeof option === 'string' ? option : option.text;
+                const optionImage = typeof option === 'object' ? option.image : null;
+                return (
+                  <button
+                    key={optionText}
+                    onClick={() => {
+                      setSelectedOutcome(optionText);
+                      setShowPredictModal(true);
+                    }}
+                    className="w-full px-6 py-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-lg font-semibold text-gray-900 dark:text-white transition-colors flex items-center justify-center gap-3"
+                  >
+                    {optionImage && (
+                      <img src={optionImage} alt={optionText} className="w-12 h-12 object-cover rounded-full" />
+                    )}
+                    <span>{optionText} {isPoll ? '' : 'Wins'}</span>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
@@ -289,22 +321,29 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate 
                   {prediction ? "Select a new outcome:" : "Select your prediction:"}
                 </p>
                 <div className="space-y-2">
-                  {getOutcomeOptions().map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => {
-                        onPredict(option);
-                        setShowPredictModal(false);
-                      }}
-                      className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
-                        selectedOutcome === option
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {option} {isPoll ? '' : 'Wins'}
-                    </button>
-                  ))}
+                  {getOutcomeOptions().map((option, index) => {
+                    const optionText = typeof option === 'string' ? option : option.text;
+                    const optionImage = typeof option === 'object' ? option.image : null;
+                    return (
+                      <button
+                        key={optionText}
+                        onClick={() => {
+                          onPredict(optionText);
+                          setShowPredictModal(false);
+                        }}
+                        className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-3 ${
+                          selectedOutcome === optionText
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        {optionImage && (
+                          <img src={optionImage} alt={optionText} className="w-8 h-8 object-cover rounded-full" />
+                        )}
+                        <span>{optionText} {isPoll ? '' : 'Wins'}</span>
+                      </button>
+                    );
+                  })}
                 </div>
                 <button
                   onClick={() => setShowPredictModal(false)}
@@ -336,9 +375,16 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   
   const getOutcomeOptions = () => {
     if (isPoll) {
+      if (item.optionType === 'options' && item.options) {
+        return item.options.map(opt => ({ text: opt.text, image: opt.image }));
+      }
       return ['YES', 'NO'];
     }
-    return [item.teamA, 'Draw', item.teamB];
+    return [
+      { text: item.teamA, image: item.teamAImage },
+      { text: 'Draw', image: null },
+      { text: item.teamB, image: item.teamBImage }
+    ];
   };
 
   const handleBack = () => {
@@ -363,10 +409,28 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
             </svg>
             <span className="font-medium">Back to Cup</span>
           </button>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+          {/* Header with Images */}
+          {!isPoll && (
+            <div className="flex items-center justify-center gap-8 mb-6">
+              <div className="flex flex-col items-center">
+                {item.teamAImage && (
+                  <img src={item.teamAImage} alt={item.teamA} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                )}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamA}</h2>
+              </div>
+              <div className="text-2xl font-bold text-gray-500 dark:text-gray-400">VS</div>
+              <div className="flex flex-col items-center">
+                {item.teamBImage && (
+                  <img src={item.teamBImage} alt={item.teamB} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                )}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamB}</h2>
+              </div>
+            </div>
+          )}
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4 text-center">
             {isPoll ? item.question : `${item.teamA} vs ${item.teamB}`}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
             {isPoll ? item.description : `${new Date(item.date).toLocaleDateString()} • ${item.stageName || ''}`}
           </p>
 
@@ -453,18 +517,25 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
             </div>
           ) : !isResolved ? (
             <div className="space-y-4">
-              {getOutcomeOptions().map((option) => (
-                <button
-                  key={option}
-                  onClick={() => {
-                    setSelectedOutcome(option);
-                    setShowPredictModal(true);
-                  }}
-                  className="w-full px-6 py-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-lg font-semibold text-gray-900 dark:text-white transition-colors"
-                >
-                  {option} {isPoll ? '' : 'Wins'}
-                </button>
-              ))}
+              {getOutcomeOptions().map((option, index) => {
+                const optionText = typeof option === 'string' ? option : option.text;
+                const optionImage = typeof option === 'object' ? option.image : null;
+                return (
+                  <button
+                    key={optionText}
+                    onClick={() => {
+                      setSelectedOutcome(optionText);
+                      setShowPredictModal(true);
+                    }}
+                    className="w-full px-6 py-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-lg font-semibold text-gray-900 dark:text-white transition-colors flex items-center justify-center gap-3"
+                  >
+                    {optionImage && (
+                      <img src={optionImage} alt={optionText} className="w-12 h-12 object-cover rounded-full" />
+                    )}
+                    <span>{optionText} {isPoll ? '' : 'Wins'}</span>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
@@ -489,21 +560,28 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                   {prediction ? "Select a new outcome:" : "Select your prediction:"}
                 </p>
                 <div className="space-y-2">
-                  {getOutcomeOptions().map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => {
-                        setSelectedOutcome(option);
-                      }}
-                      className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
-                        selectedOutcome === option
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {option} {isPoll ? '' : 'Wins'}
-                    </button>
-                  ))}
+                  {getOutcomeOptions().map((option, index) => {
+                    const optionText = typeof option === 'string' ? option : option.text;
+                    const optionImage = typeof option === 'object' ? option.image : null;
+                    return (
+                      <button
+                        key={optionText}
+                        onClick={() => {
+                          setSelectedOutcome(optionText);
+                        }}
+                        className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-3 ${
+                          selectedOutcome === optionText
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        {optionImage && (
+                          <img src={optionImage} alt={optionText} className="w-8 h-8 object-cover rounded-full" />
+                        )}
+                        <span>{optionText} {isPoll ? '' : 'Wins'}</span>
+                      </button>
+                    );
+                  })}
                 </div>
                 {!prediction && selectedOutcome && (
                   <div>
@@ -640,10 +718,18 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
     let totalLiquidity = 0;
     
     if (isPoll) {
-      // Poll: YES/NO
-      totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
-      calculatedPrices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
-      calculatedPrices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
+      // Poll: Handle option-based or Yes/No
+      if (item.optionType === 'options' && item.options) {
+        totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+        item.options.forEach(opt => {
+          calculatedPrices[opt.text] = totalLiquidity === 0 ? (1 / item.options.length) : (opt.liquidity || 0) / totalLiquidity;
+        });
+      } else {
+        // Normal Yes/No poll
+        totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
+        calculatedPrices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
+        calculatedPrices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
+      }
     } else {
       // Match: TeamA/TeamB/Draw
       totalLiquidity = (item.marketTeamALiquidity || 0) + (item.marketTeamBLiquidity || 0) + (item.marketDrawLiquidity || 0);
@@ -778,10 +864,27 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
         </button>
         {/* Header */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          {!isPoll && (
+            <div className="flex items-center justify-center gap-8 mb-6">
+              <div className="flex flex-col items-center">
+                {item.teamAImage && (
+                  <img src={item.teamAImage} alt={item.teamA} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                )}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamA}</h2>
+              </div>
+              <div className="text-2xl font-bold text-gray-500 dark:text-gray-400">VS</div>
+              <div className="flex flex-col items-center">
+                {item.teamBImage && (
+                  <img src={item.teamBImage} alt={item.teamB} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                )}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamB}</h2>
+              </div>
+            </div>
+          )}
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 text-center">
             {isPoll ? item.question : `${item.teamA} vs ${item.teamB}`}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600 dark:text-gray-400 text-center">
             {isPoll ? item.description : `${new Date(item.date).toLocaleDateString()} • ${item.stageName || ''}`}
           </p>
           {isResolved && (
@@ -804,25 +907,45 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
               <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
                 <div className="text-center">
                   <p className="text-gray-500 dark:text-gray-400 mb-4">Price Chart</p>
-                  <div className={`flex items-center justify-center ${isPoll ? 'space-x-8' : 'space-x-4'}`}>
+                  <div className={`flex items-center justify-center ${isPoll ? (item.optionType === 'options' && item.options ? 'space-x-4 flex-wrap' : 'space-x-8') : 'space-x-4'}`}>
                     {isPoll ? (
-                      <>
-                        <div className="text-center">
-                          <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                            {(prices.yes * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">YES</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-3xl font-bold text-red-600 dark:text-red-400">
-                            {(prices.no * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">NO</p>
-                        </div>
-                      </>
+                      item.optionType === 'options' && item.options ? (
+                        item.options.map((opt, idx) => {
+                          const optPrice = prices[opt.text] || 0;
+                          return (
+                            <div key={idx} className="text-center flex flex-col items-center">
+                              {opt.image && (
+                                <img src={opt.image} alt={opt.text} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
+                              )}
+                              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                {(optPrice * 100).toFixed(1)}%
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{opt.text}</p>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <>
+                          <div className="text-center">
+                            <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                              {(prices.yes * 100).toFixed(1)}%
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">YES</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+                              {(prices.no * 100).toFixed(1)}%
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">NO</p>
+                          </div>
+                        </>
+                      )
                     ) : (
                       <>
-                        <div className="text-center">
+                        <div className="text-center flex flex-col items-center">
+                          {item.teamAImage && (
+                            <img src={item.teamAImage} alt={item.teamA} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
+                          )}
                           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                             {(prices.teamA * 100).toFixed(1)}%
                           </p>
@@ -834,7 +957,10 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Draw</p>
                         </div>
-                        <div className="text-center">
+                        <div className="text-center flex flex-col items-center">
+                          {item.teamBImage && (
+                            <img src={item.teamBImage} alt={item.teamB} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
+                          )}
                           <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                             {(prices.teamB * 100).toFixed(1)}%
                           </p>
@@ -965,42 +1091,72 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                   Select Option
                 </label>
                 {isPoll ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setSelectedOption('yes')}
-                      className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
-                        selectedOption === 'yes'
-                          ? 'bg-green-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      YES
-                      <div className="text-xs mt-1">{(prices.yes * 100).toFixed(1)}%</div>
-                    </button>
-                    <button
-                      onClick={() => setSelectedOption('no')}
-                      className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
-                        selectedOption === 'no'
-                          ? 'bg-red-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      NO
-                      <div className="text-xs mt-1">{(prices.no * 100).toFixed(1)}%</div>
-                    </button>
-                  </div>
+                  item.optionType === 'options' && item.options ? (
+                    <div className="grid grid-cols-1 gap-2">
+                      {item.options.map((opt, idx) => {
+                        const optPrice = prices[opt.text] || 0;
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedOption(opt.text)}
+                            className={`px-4 py-3 rounded-lg font-semibold transition-colors flex items-center gap-3 ${
+                              selectedOption === opt.text
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                            }`}
+                          >
+                            {opt.image && (
+                              <img src={opt.image} alt={opt.text} className="w-10 h-10 object-cover rounded-full" />
+                            )}
+                            <div className="flex-1 text-left">
+                              <div>{opt.text}</div>
+                              <div className="text-xs mt-1">{(optPrice * 100).toFixed(1)}%</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setSelectedOption('yes')}
+                        className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
+                          selectedOption === 'yes'
+                            ? 'bg-green-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        YES
+                        <div className="text-xs mt-1">{(prices.yes * 100).toFixed(1)}%</div>
+                      </button>
+                      <button
+                        onClick={() => setSelectedOption('no')}
+                        className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
+                          selectedOption === 'no'
+                            ? 'bg-red-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        NO
+                        <div className="text-xs mt-1">{(prices.no * 100).toFixed(1)}%</div>
+                      </button>
+                    </div>
+                  )
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => setSelectedOption('teamA')}
-                      className={`px-3 py-3 rounded-lg font-semibold transition-colors text-sm ${
+                      className={`px-3 py-3 rounded-lg font-semibold transition-colors text-sm flex flex-col items-center ${
                         selectedOption === 'teamA'
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
                       title={`${item.teamA} Win`}
                     >
-                      <div className="truncate">{item.teamA}</div>
+                      {item.teamAImage && (
+                        <img src={item.teamAImage} alt={item.teamA} className="w-8 h-8 object-cover rounded-full mb-1" />
+                      )}
+                      <div className="truncate text-xs">{item.teamA}</div>
                       <div className="text-xs mt-1">{(prices.teamA * 100).toFixed(1)}%</div>
                     </button>
                     <button
@@ -1016,14 +1172,17 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification }) => 
                     </button>
                     <button
                       onClick={() => setSelectedOption('teamB')}
-                      className={`px-3 py-3 rounded-lg font-semibold transition-colors text-sm ${
+                      className={`px-3 py-3 rounded-lg font-semibold transition-colors text-sm flex flex-col items-center ${
                         selectedOption === 'teamB'
                           ? 'bg-red-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
                       title={`${item.teamB} Win`}
                     >
-                      <div className="truncate">{item.teamB}</div>
+                      {item.teamBImage && (
+                        <img src={item.teamBImage} alt={item.teamB} className="w-8 h-8 object-cover rounded-full mb-1" />
+                      )}
+                      <div className="truncate text-xs">{item.teamB}</div>
                       <div className="text-xs mt-1">{(prices.teamB * 100).toFixed(1)}%</div>
                     </button>
                   </div>

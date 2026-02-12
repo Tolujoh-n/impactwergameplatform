@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const { auth, isAdmin } = require('../middleware/auth');
 const Match = require('../models/Match');
 const Poll = require('../models/Poll');
@@ -8,8 +9,25 @@ const Prediction = require('../models/Prediction');
 const User = require('../models/User');
 const Blog = require('../models/Blog');
 const Settings = require('../models/Settings');
+const { uploadImage, deleteImage } = require('../utils/cloudinary');
 
 const router = express.Router();
+
+// Configure multer for memory storage
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  },
+});
 
 // All admin routes require authentication and admin role
 router.use(auth);
@@ -251,10 +269,30 @@ router.delete('/blogs/:id', async (req, res) => {
   }
 });
 
+// Image upload endpoint
+router.post('/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided' });
+    }
+
+    const folder = req.body.folder || 'wergame';
+    const uploadResult = await uploadImage(req.file, { folder });
+
+    res.json({
+      url: uploadResult.url,
+      public_id: uploadResult.public_id,
+    });
+  } catch (error) {
+    console.error('Image upload error:', error);
+    res.status(500).json({ message: error.message || 'Failed to upload image' });
+  }
+});
+
 // Create Match with liquidity
 router.post('/matches', async (req, res) => {
   try {
-    const { teamA, teamB, date, cup, stage, stageName, marketTeamALiquidity, marketTeamBLiquidity, marketDrawLiquidity, isFeatured } = req.body;
+    const { teamA, teamB, date, cup, stage, stageName, marketTeamALiquidity, marketTeamBLiquidity, marketDrawLiquidity, isFeatured, teamAImage, teamBImage } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -278,6 +316,8 @@ router.post('/matches', async (req, res) => {
       marketDrawLiquidity: marketDrawLiquidity || 0,
       marketInitialized: (marketTeamALiquidity > 0 || marketTeamBLiquidity > 0 || marketDrawLiquidity > 0),
       isFeatured: isFeatured || false,
+      teamAImage: teamAImage || undefined,
+      teamBImage: teamBImage || undefined,
     });
 
     await match.save();
@@ -425,7 +465,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
 // Create Poll with liquidity
 router.post('/polls', async (req, res) => {
   try {
-    const { question, description, type, cup, stage, marketYesLiquidity, marketNoLiquidity, isFeatured } = req.body;
+    const { question, description, type, cup, stage, marketYesLiquidity, marketNoLiquidity, isFeatured, optionType, options } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -437,17 +477,36 @@ router.post('/polls', async (req, res) => {
       stageDoc = typeof stage === 'string' ? await Stage.findById(stage) : stage;
     }
 
-    const poll = new Poll({
+    const pollData = {
       question,
       description,
       type,
       cup: cupDoc._id,
       stage: stageDoc?._id,
-      marketYesLiquidity: marketYesLiquidity || 0,
-      marketNoLiquidity: marketNoLiquidity || 0,
-      marketInitialized: (marketYesLiquidity > 0 || marketNoLiquidity > 0),
       isFeatured: isFeatured || false,
-    });
+      optionType: optionType || 'normal',
+    };
+
+    // Handle option-based polls
+    if (optionType === 'options' && options && Array.isArray(options) && options.length > 0) {
+      pollData.options = options.map(opt => ({
+        text: opt.text,
+        image: opt.image || undefined,
+        liquidity: opt.liquidity || 0,
+        shares: 0,
+      }));
+      
+      // Calculate total liquidity from options
+      const totalLiquidity = options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+      pollData.marketInitialized = totalLiquidity > 0;
+    } else {
+      // Normal Yes/No poll
+      pollData.marketYesLiquidity = marketYesLiquidity || 0;
+      pollData.marketNoLiquidity = marketNoLiquidity || 0;
+      pollData.marketInitialized = (marketYesLiquidity > 0 || marketNoLiquidity > 0);
+    }
+
+    const poll = new Poll(pollData);
 
     await poll.save();
     
@@ -494,16 +553,26 @@ router.post('/polls/:id/status', async (req, res) => {
 // Add liquidity to poll market
 router.post('/polls/:id/liquidity', async (req, res) => {
   try {
-    const { yesLiquidity, noLiquidity } = req.body;
+    const { yesLiquidity, noLiquidity, optionIndex, optionLiquidity } = req.body;
     const poll = await Poll.findById(req.params.id);
     
     if (!poll) {
       return res.status(404).json({ message: 'Poll not found' });
     }
 
-    poll.marketYesLiquidity += yesLiquidity || 0;
-    poll.marketNoLiquidity += noLiquidity || 0;
-    poll.marketInitialized = true;
+    // Handle option-based polls
+    if (poll.optionType === 'options' && optionIndex !== undefined && optionLiquidity !== undefined) {
+      if (!poll.options || !poll.options[optionIndex]) {
+        return res.status(400).json({ message: 'Invalid option index' });
+      }
+      poll.options[optionIndex].liquidity += optionLiquidity || 0;
+      poll.marketInitialized = true;
+    } else {
+      // Normal Yes/No poll
+      poll.marketYesLiquidity += yesLiquidity || 0;
+      poll.marketNoLiquidity += noLiquidity || 0;
+      poll.marketInitialized = true;
+    }
     
     await poll.save();
     res.json(poll);
@@ -528,12 +597,7 @@ router.delete('/polls/:id', async (req, res) => {
 // Resolve Poll
 router.post('/polls/:id/resolve', async (req, res) => {
   try {
-    const { result } = req.body;
-    
-    // Validate result for poll (must be YES or NO)
-    if (!['yes', 'no', 'YES', 'NO', 'Yes', 'No'].includes(result)) {
-      return res.status(400).json({ message: 'Invalid result. Must be YES or NO' });
-    }
+    const { result, optionIndex } = req.body;
     
     const poll = await Poll.findById(req.params.id);
     
@@ -541,8 +605,27 @@ router.post('/polls/:id/resolve', async (req, res) => {
       return res.status(404).json({ message: 'Poll not found' });
     }
 
-    const normalizedResult = result.toUpperCase();
-    poll.result = normalizedResult;
+    let normalizedResult = '';
+    let winningOptionText = '';
+    
+    // Handle option-based polls
+    if (poll.optionType === 'options' && optionIndex !== undefined) {
+      if (!poll.options || !poll.options[optionIndex]) {
+        return res.status(400).json({ message: 'Invalid option index' });
+      }
+      // The selected option becomes "YES", others become "NO"
+      normalizedResult = 'YES';
+      winningOptionText = poll.options[optionIndex].text;
+      poll.result = winningOptionText; // Store the winning option text
+    } else {
+      // Normal Yes/No poll
+      if (!['yes', 'no', 'YES', 'NO', 'Yes', 'No'].includes(result)) {
+        return res.status(400).json({ message: 'Invalid result. Must be YES or NO' });
+      }
+      normalizedResult = result.toUpperCase();
+      poll.result = normalizedResult;
+    }
+    
     poll.status = 'settled';
     poll.isResolved = true;
     await poll.save();
@@ -552,9 +635,18 @@ router.post('/polls/:id/resolve', async (req, res) => {
     const boostPredictions = [];
     
     for (const prediction of predictions) {
-      const normalizedOutcome = prediction.outcome.toUpperCase();
+      let isWinner = false;
       
-      if (normalizedOutcome === normalizedResult) {
+      if (poll.optionType === 'options') {
+        // For option-based polls, check if prediction outcome matches the selected option
+        isWinner = prediction.outcome === winningOptionText;
+      } else {
+        // Normal Yes/No poll
+        const normalizedOutcome = prediction.outcome.toUpperCase();
+        isWinner = normalizedOutcome === normalizedResult;
+      }
+      
+      if (isWinner) {
         prediction.status = 'won';
       } else {
         prediction.status = 'lost';
@@ -562,12 +654,23 @@ router.post('/polls/:id/resolve', async (req, res) => {
       
       // For market predictions, calculate payout based on shares
       if (prediction.type === 'market' && prediction.status === 'won') {
-        const totalShares = (poll.marketYesShares || 0) + (poll.marketNoShares || 0);
-        if (totalShares > 0) {
-          const winningShares = normalizedResult === 'YES' ? (poll.marketYesShares || 0) : (poll.marketNoShares || 0);
-          const totalLiquidity = (poll.marketYesLiquidity || 0) + (poll.marketNoLiquidity || 0);
-          if (winningShares > 0 && prediction.shares > 0) {
-            prediction.payout = (prediction.shares / winningShares) * totalLiquidity;
+        if (poll.optionType === 'options') {
+          // For option-based polls, calculate based on option shares
+          const winningOption = poll.options[optionIndex];
+          const totalShares = poll.options.reduce((sum, opt) => sum + (opt.shares || 0), 0);
+          if (totalShares > 0 && winningOption.shares > 0 && prediction.shares > 0) {
+            const totalLiquidity = poll.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+            prediction.payout = (prediction.shares / winningOption.shares) * (winningOption.liquidity || 0);
+          }
+        } else {
+          // Normal Yes/No poll
+          const totalShares = (poll.marketYesShares || 0) + (poll.marketNoShares || 0);
+          if (totalShares > 0) {
+            const winningShares = normalizedResult === 'YES' ? (poll.marketYesShares || 0) : (poll.marketNoShares || 0);
+            const totalLiquidity = (poll.marketYesLiquidity || 0) + (poll.marketNoLiquidity || 0);
+            if (winningShares > 0 && prediction.shares > 0) {
+              prediction.payout = (prediction.shares / winningShares) * totalLiquidity;
+            }
           }
         }
         prediction.status = 'settled';

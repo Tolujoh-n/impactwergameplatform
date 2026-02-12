@@ -383,8 +383,16 @@ router.post('/market/buy', auth, async (req, res) => {
       if (!item) {
         return res.status(404).json({ message: 'Poll not found' });
       }
-      if (!['yes', 'no', 'YES', 'NO'].includes(outcome)) {
-        return res.status(400).json({ message: 'Invalid outcome for poll' });
+      // For option-based polls, validate outcome is one of the option texts
+      if (item.optionType === 'options') {
+        if (!item.options || !item.options.some(opt => opt.text === outcome)) {
+          return res.status(400).json({ message: 'Invalid outcome for poll option' });
+        }
+      } else {
+        // Normal Yes/No poll
+        if (!['yes', 'no', 'YES', 'NO'].includes(outcome)) {
+          return res.status(400).json({ message: 'Invalid outcome for poll' });
+        }
       }
     }
     
@@ -397,7 +405,7 @@ router.post('/market/buy', auth, async (req, res) => {
     }
     
     const investAmount = parseFloat(amount);
-    const normalizedOutcome = outcome.toUpperCase();
+    let normalizedOutcome = outcome;
     
     // Calculate shares based on current liquidity (simplified AMM)
     let shares = 0;
@@ -405,6 +413,7 @@ router.post('/market/buy', auth, async (req, res) => {
     let optionLiquidity = 0;
     
     if (matchId) {
+      normalizedOutcome = outcome.toUpperCase();
       totalLiquidity = (item.marketTeamALiquidity || 0) + (item.marketTeamBLiquidity || 0) + (item.marketDrawLiquidity || 0);
       if (normalizedOutcome === 'TEAMA') {
         optionLiquidity = item.marketTeamALiquidity || 0;
@@ -414,11 +423,26 @@ router.post('/market/buy', auth, async (req, res) => {
         optionLiquidity = item.marketDrawLiquidity || 0;
       }
     } else {
-      totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
-      if (normalizedOutcome === 'YES') {
-        optionLiquidity = item.marketYesLiquidity || 0;
-      } else if (normalizedOutcome === 'NO') {
-        optionLiquidity = item.marketNoLiquidity || 0;
+      // Handle poll
+      if (item.optionType === 'options') {
+        // For option-based polls, use the option text as outcome
+        normalizedOutcome = outcome;
+        // Calculate total liquidity from all options
+        totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+        // Find the selected option
+        const selectedOption = item.options.find(opt => opt.text === outcome);
+        if (selectedOption) {
+          optionLiquidity = selectedOption.liquidity || 0;
+        }
+      } else {
+        // Normal Yes/No poll
+        normalizedOutcome = outcome.toUpperCase();
+        totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
+        if (normalizedOutcome === 'YES') {
+          optionLiquidity = item.marketYesLiquidity || 0;
+        } else if (normalizedOutcome === 'NO') {
+          optionLiquidity = item.marketNoLiquidity || 0;
+        }
       }
     }
     
@@ -470,12 +494,23 @@ router.post('/market/buy', auth, async (req, res) => {
         item.marketDrawShares = (item.marketDrawShares || 0) + shares;
       }
     } else {
-      if (normalizedOutcome === 'YES') {
-        item.marketYesLiquidity = (item.marketYesLiquidity || 0) + investAmount;
-        item.marketYesShares = (item.marketYesShares || 0) + shares;
-      } else if (normalizedOutcome === 'NO') {
-        item.marketNoLiquidity = (item.marketNoLiquidity || 0) + investAmount;
-        item.marketNoShares = (item.marketNoShares || 0) + shares;
+      // Handle poll
+      if (item.optionType === 'options') {
+        // Update the specific option
+        const selectedOption = item.options.find(opt => opt.text === outcome);
+        if (selectedOption) {
+          selectedOption.liquidity = (selectedOption.liquidity || 0) + investAmount;
+          selectedOption.shares = (selectedOption.shares || 0) + shares;
+        }
+      } else {
+        // Normal Yes/No poll
+        if (normalizedOutcome === 'YES') {
+          item.marketYesLiquidity = (item.marketYesLiquidity || 0) + investAmount;
+          item.marketYesShares = (item.marketYesShares || 0) + shares;
+        } else if (normalizedOutcome === 'NO') {
+          item.marketNoLiquidity = (item.marketNoLiquidity || 0) + investAmount;
+          item.marketNoShares = (item.marketNoShares || 0) + shares;
+        }
       }
     }
     
@@ -532,12 +567,13 @@ router.post('/market/sell', auth, async (req, res) => {
     }
     
     // Calculate payout based on current market price
-    const normalizedOutcome = prediction.outcome.toUpperCase();
+    let normalizedOutcome = prediction.outcome;
     let totalLiquidity = 0;
     let optionLiquidity = 0;
     let payout = 0;
     
     if (matchId) {
+      normalizedOutcome = prediction.outcome.toUpperCase();
       totalLiquidity = (item.marketTeamALiquidity || 0) + (item.marketTeamBLiquidity || 0) + (item.marketDrawLiquidity || 0);
       if (normalizedOutcome === 'TEAMA') {
         optionLiquidity = item.marketTeamALiquidity || 0;
@@ -547,11 +583,26 @@ router.post('/market/sell', auth, async (req, res) => {
         optionLiquidity = item.marketDrawLiquidity || 0;
       }
     } else {
-      totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
-      if (normalizedOutcome === 'YES') {
-        optionLiquidity = item.marketYesLiquidity || 0;
-      } else if (normalizedOutcome === 'NO') {
-        optionLiquidity = item.marketNoLiquidity || 0;
+      // Handle poll
+      if (item.optionType === 'options') {
+        // For option-based polls, use the option text
+        normalizedOutcome = prediction.outcome;
+        // Calculate total liquidity from all options
+        totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+        // Find the selected option
+        const selectedOption = item.options.find(opt => opt.text === prediction.outcome);
+        if (selectedOption) {
+          optionLiquidity = selectedOption.liquidity || 0;
+        }
+      } else {
+        // Normal Yes/No poll
+        normalizedOutcome = prediction.outcome.toUpperCase();
+        totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
+        if (normalizedOutcome === 'YES') {
+          optionLiquidity = item.marketYesLiquidity || 0;
+        } else if (normalizedOutcome === 'NO') {
+          optionLiquidity = item.marketNoLiquidity || 0;
+        }
       }
     }
     
@@ -629,9 +680,20 @@ router.get('/market/:itemId/data', async (req, res) => {
       prices.teamB = totalLiquidity === 0 ? 0.333 : (item.marketTeamBLiquidity || 0) / totalLiquidity;
       prices.draw = totalLiquidity === 0 ? 0.333 : (item.marketDrawLiquidity || 0) / totalLiquidity;
     } else {
-      totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
-      prices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
-      prices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
+      // Handle poll
+      if (item.optionType === 'options') {
+        // For option-based polls, calculate prices for each option
+        totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+        prices = {};
+        item.options.forEach(opt => {
+          prices[opt.text] = totalLiquidity === 0 ? (1 / item.options.length) : (opt.liquidity || 0) / totalLiquidity;
+        });
+      } else {
+        // Normal Yes/No poll
+        totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
+        prices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
+        prices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
+      }
     }
     
     // Get all market predictions to show trading activity

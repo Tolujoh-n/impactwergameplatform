@@ -9,6 +9,12 @@ const matchSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  teamAImage: {
+    type: String,
+  },
+  teamBImage: {
+    type: String,
+  },
   date: {
     type: Date,
     required: true,
