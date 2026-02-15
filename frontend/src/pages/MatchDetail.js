@@ -54,7 +54,9 @@ const MatchDetail = () => {
         ? `/predictions/poll/${pollId}/user?type=${type}`
         : `/predictions/match/${matchId}/user?type=${type}`;
       const response = await api.get(endpoint);
-      setPrediction(response.data);
+      // Handle both single prediction and array (for market type)
+      const predictionData = Array.isArray(response.data) ? response.data[0] : response.data;
+      setPrediction(predictionData);
     } catch (error) {
       // User hasn't predicted yet for this type
       setPrediction(null);
@@ -66,7 +68,21 @@ const MatchDetail = () => {
     if (user) {
       fetchUserPrediction();
     }
-  }, [itemId, user, isPoll, fetchData, fetchUserPrediction]);
+  }, [itemId, user, isPoll, type, fetchData, fetchUserPrediction]);
+  
+  // Refresh prediction when item resolution status changes
+  useEffect(() => {
+    if (user && (match || poll)) {
+      const item = match || poll;
+      if (item && item.isResolved) {
+        // Refresh prediction data when item is resolved
+        const timer = setTimeout(() => {
+          fetchUserPrediction();
+        }, 1000); // Small delay to ensure backend has saved the prediction
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [match?.isResolved, poll?.isResolved, user, fetchUserPrediction]);
 
   const handlePredict = async (outcome, amount = null) => {
     if (!user) {
@@ -183,7 +199,7 @@ const MatchDetail = () => {
   if (type === 'free') {
     return <FreeMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} locked={locked} />;
   } else if (type === 'boost') {
-    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onStakeAction={handleStakeAction} onClaim={handleClaim} navigate={navigate} locked={locked} />;
+    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onStakeAction={handleStakeAction} onClaim={handleClaim} navigate={navigate} locked={locked} onRefreshPrediction={fetchUserPrediction} />;
   } else if (type === 'market') {
     return <MarketMatchView 
       item={item} 
@@ -433,7 +449,7 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
   );
 };
 
-const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, onClaim, navigate, locked = false }) => {
+const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, onClaim, navigate, locked = false, onRefreshPrediction }) => {
   const [showPredictModal, setShowPredictModal] = useState(false);
   const [showStakeModal, setShowStakeModal] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState(null);
@@ -444,7 +460,12 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
-  const hasWon = prediction && prediction.status === 'won';
+  // Check if won: status is 'won' OR (status is 'settled' and payout > 0) OR (payout > 0 and status is not 'lost')
+  const hasWon = prediction && (
+    prediction.status === 'won' || 
+    (prediction.status === 'settled' && (prediction.payout || 0) > 0) ||
+    ((prediction.payout || 0) > 0 && prediction.status !== 'lost')
+  );
   const canModify = !locked && !isResolved && (item.status === 'upcoming' || item.status === 'active');
   
   const getOutcomeOptions = () => {
@@ -566,7 +587,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
               {isResolved && (
                 <>
                   <p className={`text-lg mb-2 ${hasWon ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                    Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
+                    Status: {hasWon ? '✅ Won' : '❌ Lost'}
                   </p>
                   {hasWon ? (
                     prediction.claimed ? (
@@ -587,7 +608,11 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                               await api.post(`/predictions/${prediction._id}/claim`);
                               showNotification('Payout claimed successfully!', 'success');
                               // Refresh prediction data
-                              window.location.reload();
+                              if (onRefreshPrediction) {
+                                await onRefreshPrediction();
+                              } else {
+                                window.location.reload();
+                              }
                             } catch (error) {
                               showNotification(error.response?.data?.message || 'Failed to claim', 'error');
                             }

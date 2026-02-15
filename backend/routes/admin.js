@@ -440,6 +440,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
     const boostPredictions = [];
     const marketWinningPredictions = [];
     
+    // First pass: determine win/loss status and collect predictions (don't save yet)
     for (const prediction of predictions) {
       // Normalize outcome for comparison
       const normalizedOutcome = prediction.outcome.charAt(0).toUpperCase() + prediction.outcome.slice(1).toLowerCase();
@@ -453,11 +454,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
         if (prediction.type === 'market') {
           prediction.shares = 0;
         }
-        // For losing boost predictions, set amount to 0
-        if (prediction.type === 'boost') {
-          prediction.amount = 0;
-          prediction.totalStake = 0;
-        }
+        // Note: Don't zero out boost losing stakes yet - we need them for payout calculation
       }
       
       // For market predictions, calculate payout based on shares in winning option
@@ -474,8 +471,6 @@ router.post('/matches/:id/resolve', async (req, res) => {
       if (prediction.type === 'boost') {
         boostPredictions.push(prediction);
       }
-      
-      await prediction.save();
     }
 
     // Calculate market payouts: distribute total liquidity proportionally to winners
@@ -490,22 +485,57 @@ router.post('/matches/:id/resolve', async (req, res) => {
       }
     }
 
-    // Calculate and update payouts for boost predictions (move all to winning option proportionally)
+    // Calculate and update payouts for boost predictions
+    // Winners get their stake back + proportional share of all losing stakes
     if (boostPredictions.length > 0) {
-      const winningBoostPredictions = boostPredictions.filter(p => p.status === 'won');
-      const totalWinningStake = winningBoostPredictions.reduce((sum, p) => sum + (p.totalStake || p.amount || 0), 0);
+      // Store original stake values before any modifications
+      const originalStakes = new Map();
+      for (const prediction of boostPredictions) {
+        originalStakes.set(prediction._id.toString(), prediction.totalStake || prediction.amount || 0);
+      }
       
+      const winningBoostPredictions = boostPredictions.filter(p => p.status === 'won');
+      const losingBoostPredictions = boostPredictions.filter(p => p.status === 'lost');
+      
+      // Calculate total losing stakes using original values (these will be distributed to winners)
+      const totalLosingStakes = losingBoostPredictions.reduce((sum, p) => {
+        const originalStake = originalStakes.get(p._id.toString()) || 0;
+        return sum + originalStake;
+      }, 0);
+      
+      // Calculate total winning stakes using original values (for proportional distribution)
+      const totalWinningStake = winningBoostPredictions.reduce((sum, p) => {
+        const originalStake = originalStakes.get(p._id.toString()) || 0;
+        return sum + originalStake;
+      }, 0);
+
       if (totalWinningStake > 0) {
+        // Distribute losing stakes proportionally to winners
         for (const prediction of boostPredictions) {
           if (prediction.status === 'won') {
-            // Distribute total boost pool proportionally
-            prediction.payout = ((prediction.totalStake || prediction.amount || 0) / totalWinningStake) * totalBoostPool;
+            const userStake = originalStakes.get(prediction._id.toString()) || 0;
+            // Calculate user's share of losing stakes based on their stake proportion
+            const shareOfLosingStakes = totalLosingStakes > 0 
+              ? (userStake / totalWinningStake) * totalLosingStakes 
+              : 0;
+            // Payout = original stake + share of losing stakes
+            prediction.payout = userStake + shareOfLosingStakes;
           } else {
-            // Losing predictions get 0
+            // Losing predictions get 0 (their stake goes to winners)
             prediction.payout = 0;
             prediction.amount = 0;
             prediction.totalStake = 0;
           }
+          prediction.status = 'settled'; // Mark as settled
+          await prediction.save();
+        }
+      } else {
+        // If no winning stake, all predictions get 0
+        for (const prediction of boostPredictions) {
+          prediction.payout = 0;
+          prediction.amount = 0;
+          prediction.totalStake = 0;
+          prediction.status = 'settled';
           await prediction.save();
         }
       }
@@ -727,16 +757,19 @@ router.post('/polls/:id/resolve', async (req, res) => {
     const boostPredictions = [];
     const marketWinningPredictions = [];
     
+    // First pass: determine win/loss status and collect predictions
     for (const prediction of predictions) {
       let isWinner = false;
       
       if (poll.optionType === 'options') {
         // For option-based polls, check if prediction outcome matches the selected option
-        isWinner = prediction.outcome === winningOptionText;
+        // Trim and compare to handle any whitespace issues
+        isWinner = (prediction.outcome || '').trim() === (winningOptionText || '').trim();
       } else {
-        // Normal Yes/No poll
-        const normalizedOutcome = prediction.outcome.toUpperCase();
-        isWinner = normalizedOutcome === normalizedResult;
+        // Normal Yes/No poll - normalize both sides for comparison
+        const normalizedOutcome = (prediction.outcome || '').toUpperCase().trim();
+        const normalizedResultUpper = (normalizedResult || '').toUpperCase().trim();
+        isWinner = normalizedOutcome === normalizedResultUpper;
       }
       
       if (isWinner) {
@@ -747,11 +780,7 @@ router.post('/polls/:id/resolve', async (req, res) => {
         if (prediction.type === 'market') {
           prediction.shares = 0;
         }
-        // For losing boost predictions, set amount to 0
-        if (prediction.type === 'boost') {
-          prediction.amount = 0;
-          prediction.totalStake = 0;
-        }
+        // Note: Don't zero out boost losing stakes yet - we need them for payout calculation
       }
       
       // For market predictions, collect winners for proportional distribution
@@ -768,8 +797,6 @@ router.post('/polls/:id/resolve', async (req, res) => {
       if (prediction.type === 'boost') {
         boostPredictions.push(prediction);
       }
-      
-      await prediction.save();
     }
 
     // Calculate market payouts: distribute total liquidity proportionally to winners
@@ -784,22 +811,57 @@ router.post('/polls/:id/resolve', async (req, res) => {
       }
     }
 
-    // Calculate and update payouts for boost predictions (move all to winning option proportionally)
+    // Calculate and update payouts for boost predictions
+    // Winners get their stake back + proportional share of all losing stakes
     if (boostPredictions.length > 0) {
-      const winningBoostPredictions = boostPredictions.filter(p => p.status === 'won');
-      const totalWinningStake = winningBoostPredictions.reduce((sum, p) => sum + (p.totalStake || p.amount || 0), 0);
+      // Store original stake values before any modifications
+      const originalStakes = new Map();
+      for (const prediction of boostPredictions) {
+        originalStakes.set(prediction._id.toString(), prediction.totalStake || prediction.amount || 0);
+      }
       
+      const winningBoostPredictions = boostPredictions.filter(p => p.status === 'won');
+      const losingBoostPredictions = boostPredictions.filter(p => p.status === 'lost');
+      
+      // Calculate total losing stakes using original values (these will be distributed to winners)
+      const totalLosingStakes = losingBoostPredictions.reduce((sum, p) => {
+        const originalStake = originalStakes.get(p._id.toString()) || 0;
+        return sum + originalStake;
+      }, 0);
+      
+      // Calculate total winning stakes using original values (for proportional distribution)
+      const totalWinningStake = winningBoostPredictions.reduce((sum, p) => {
+        const originalStake = originalStakes.get(p._id.toString()) || 0;
+        return sum + originalStake;
+      }, 0);
+
       if (totalWinningStake > 0) {
+        // Distribute losing stakes proportionally to winners
         for (const prediction of boostPredictions) {
           if (prediction.status === 'won') {
-            // Distribute total boost pool proportionally
-            prediction.payout = ((prediction.totalStake || prediction.amount || 0) / totalWinningStake) * totalBoostPool;
+            const userStake = originalStakes.get(prediction._id.toString()) || 0;
+            // Calculate user's share of losing stakes based on their stake proportion
+            const shareOfLosingStakes = totalLosingStakes > 0 
+              ? (userStake / totalWinningStake) * totalLosingStakes 
+              : 0;
+            // Payout = original stake + share of losing stakes
+            prediction.payout = userStake + shareOfLosingStakes;
           } else {
-            // Losing predictions get 0
+            // Losing predictions get 0 (their stake goes to winners)
             prediction.payout = 0;
             prediction.amount = 0;
             prediction.totalStake = 0;
           }
+          prediction.status = 'settled'; // Mark as settled
+          await prediction.save();
+        }
+      } else {
+        // If no winning stake, all predictions get 0
+        for (const prediction of boostPredictions) {
+          prediction.payout = 0;
+          prediction.amount = 0;
+          prediction.totalStake = 0;
+          prediction.status = 'settled';
           await prediction.save();
         }
       }
@@ -1055,7 +1117,9 @@ async function calculateBoostPayouts(matchId, pollId) {
     const stake = prediction.totalStake || prediction.amount || 0;
     if (stake > 0) {
       const share = stake / totalWinningAmount;
-      prediction.payout = distributablePool * share;
+      const reward = distributablePool * share;
+      // Payout = original stake + reward (total claimable amount)
+      prediction.payout = stake + reward;
       await prediction.save();
     }
   }
