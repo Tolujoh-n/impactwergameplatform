@@ -4,6 +4,7 @@ const Match = require('../models/Match');
 const Poll = require('../models/Poll');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
+const Trade = require('../models/Trade');
 const { auth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -197,6 +198,13 @@ router.get('/match/:matchId/user', auth, async (req, res) => {
       query.type = type;
     }
     
+    // For market type, return all predictions (one per option)
+    if (type === 'market') {
+      const predictions = await Prediction.find(query)
+        .populate('match', 'teamA teamB date status result isResolved');
+      return res.json(predictions);
+    }
+    
     const prediction = await Prediction.findOne(query)
       .populate('match', 'teamA teamB date status result isResolved');
     
@@ -221,6 +229,13 @@ router.get('/poll/:pollId/user', auth, async (req, res) => {
     // Filter by type if provided
     if (type) {
       query.type = type;
+    }
+    
+    // For market type, return all predictions (one per option)
+    if (type === 'market') {
+      const predictions = await Prediction.find(query)
+        .populate('poll', 'question type status result isResolved');
+      return res.json(predictions);
     }
     
     const prediction = await Prediction.findOne(query)
@@ -453,10 +468,14 @@ router.post('/market/buy', auth, async (req, res) => {
     // Calculate shares using constant product formula (simplified)
     shares = (investAmount * optionLiquidity) / (totalLiquidity + investAmount);
     
-    // Find or create prediction
+    // Calculate current price for this option
+    const currentPrice = totalLiquidity > 0 ? (optionLiquidity / totalLiquidity) : 0;
+    
+    // Find or create prediction FOR THIS SPECIFIC OPTION (isolated per option)
     const query = {
       user: req.user._id,
       type: 'market',
+      outcome: normalizedOutcome, // Include outcome in query to isolate per option
     };
     if (matchId) query.match = matchId;
     if (pollId) query.poll = pollId;
@@ -464,12 +483,11 @@ router.post('/market/buy', auth, async (req, res) => {
     let prediction = await Prediction.findOne(query);
     
     if (prediction) {
-      // Update existing prediction
+      // Update existing prediction for this option
       prediction.shares = (prediction.shares || 0) + shares;
       prediction.totalInvested = (prediction.totalInvested || 0) + investAmount;
-      prediction.outcome = normalizedOutcome;
     } else {
-      // Create new prediction
+      // Create new prediction for this option
       prediction = new Prediction({
         user: req.user._id,
         match: matchId,
@@ -480,6 +498,19 @@ router.post('/market/buy', auth, async (req, res) => {
         totalInvested: investAmount,
       });
     }
+    
+    // Create trade record for this buy transaction
+    const trade = new Trade({
+      user: req.user._id,
+      match: matchId,
+      poll: pollId,
+      type: 'buy',
+      outcome: normalizedOutcome,
+      amount: investAmount,
+      shares: shares,
+      price: currentPrice,
+    });
+    await trade.save();
     
     // Update market liquidity
     if (matchId) {
@@ -527,15 +558,23 @@ router.post('/market/buy', auth, async (req, res) => {
 // Market: Sell shares
 router.post('/market/sell', auth, async (req, res) => {
   try {
-    const { matchId, pollId, shares: sharesToSell } = req.body;
+    const { matchId, pollId, outcome, shares: sharesToSell } = req.body;
     
     if (!matchId && !pollId) {
       return res.status(400).json({ message: 'Either matchId or pollId is required' });
     }
     
+    if (!outcome) {
+      return res.status(400).json({ message: 'Outcome is required for selling' });
+    }
+    
+    let normalizedOutcome = outcome;
+    
+    // Find prediction FOR THIS SPECIFIC OPTION (isolated per option)
     const query = {
       user: req.user._id,
       type: 'market',
+      outcome: normalizedOutcome, // Include outcome in query to isolate per option
     };
     if (matchId) query.match = matchId;
     if (pollId) query.poll = pollId;
@@ -545,7 +584,7 @@ router.post('/market/sell', auth, async (req, res) => {
       .populate('poll');
     
     if (!prediction) {
-      return res.status(404).json({ message: 'No market position found' });
+      return res.status(404).json({ message: 'No market position found for this option' });
     }
     
     let item = prediction.match || prediction.poll;
@@ -558,6 +597,12 @@ router.post('/market/sell', auth, async (req, res) => {
     }
     
     const currentShares = prediction.shares || 0;
+    
+    // Check if user has any shares for this option
+    if (currentShares <= 0) {
+      return res.status(400).json({ message: 'No shares to sell for this option' });
+    }
+    
     const sellShares = sharesToSell === 'max' || sharesToSell === 'all' 
       ? currentShares 
       : parseFloat(sharesToSell);
@@ -566,14 +611,23 @@ router.post('/market/sell', auth, async (req, res) => {
       return res.status(400).json({ message: 'Invalid shares amount' });
     }
     
+    // Normalize outcome for calculations
+    if (matchId) {
+      normalizedOutcome = outcome.toUpperCase();
+    } else {
+      if (item.optionType === 'options') {
+        normalizedOutcome = outcome; // Keep as-is for option-based polls
+      } else {
+        normalizedOutcome = outcome.toUpperCase();
+      }
+    }
+    
     // Calculate payout based on current market price
-    let normalizedOutcome = prediction.outcome;
     let totalLiquidity = 0;
     let optionLiquidity = 0;
     let payout = 0;
     
     if (matchId) {
-      normalizedOutcome = prediction.outcome.toUpperCase();
       totalLiquidity = (item.marketTeamALiquidity || 0) + (item.marketTeamBLiquidity || 0) + (item.marketDrawLiquidity || 0);
       if (normalizedOutcome === 'TEAMA') {
         optionLiquidity = item.marketTeamALiquidity || 0;
@@ -585,18 +639,15 @@ router.post('/market/sell', auth, async (req, res) => {
     } else {
       // Handle poll
       if (item.optionType === 'options') {
-        // For option-based polls, use the option text
-        normalizedOutcome = prediction.outcome;
         // Calculate total liquidity from all options
         totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
         // Find the selected option
-        const selectedOption = item.options.find(opt => opt.text === prediction.outcome);
+        const selectedOption = item.options.find(opt => opt.text === outcome);
         if (selectedOption) {
           optionLiquidity = selectedOption.liquidity || 0;
         }
       } else {
         // Normal Yes/No poll
-        normalizedOutcome = prediction.outcome.toUpperCase();
         totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
         if (normalizedOutcome === 'YES') {
           optionLiquidity = item.marketYesLiquidity || 0;
@@ -605,6 +656,9 @@ router.post('/market/sell', auth, async (req, res) => {
         }
       }
     }
+    
+    // Calculate current price for this option
+    const currentPrice = totalLiquidity > 0 ? (optionLiquidity / totalLiquidity) : 0;
     
     if (totalLiquidity > 0 && optionLiquidity > 0) {
       // Calculate payout (simplified - in real AMM this would be more complex)
@@ -631,14 +685,36 @@ router.post('/market/sell', auth, async (req, res) => {
         item.marketDrawShares = Math.max(0, (item.marketDrawShares || 0) - sellShares);
       }
     } else {
-      if (normalizedOutcome === 'YES') {
-        item.marketYesLiquidity = Math.max(0, (item.marketYesLiquidity || 0) - payout);
-        item.marketYesShares = Math.max(0, (item.marketYesShares || 0) - sellShares);
-      } else if (normalizedOutcome === 'NO') {
-        item.marketNoLiquidity = Math.max(0, (item.marketNoLiquidity || 0) - payout);
-        item.marketNoShares = Math.max(0, (item.marketNoShares || 0) - sellShares);
+      // Handle poll
+      if (item.optionType === 'options') {
+        const selectedOption = item.options.find(opt => opt.text === outcome);
+        if (selectedOption) {
+          selectedOption.liquidity = Math.max(0, (selectedOption.liquidity || 0) - payout);
+          selectedOption.shares = Math.max(0, (selectedOption.shares || 0) - sellShares);
+        }
+      } else {
+        if (normalizedOutcome === 'YES') {
+          item.marketYesLiquidity = Math.max(0, (item.marketYesLiquidity || 0) - payout);
+          item.marketYesShares = Math.max(0, (item.marketYesShares || 0) - sellShares);
+        } else if (normalizedOutcome === 'NO') {
+          item.marketNoLiquidity = Math.max(0, (item.marketNoLiquidity || 0) - payout);
+          item.marketNoShares = Math.max(0, (item.marketNoShares || 0) - sellShares);
+        }
       }
     }
+    
+    // Create trade record for this sell transaction
+    const trade = new Trade({
+      user: req.user._id,
+      match: matchId,
+      poll: pollId,
+      type: 'sell',
+      outcome: normalizedOutcome,
+      amount: payout,
+      shares: sellShares,
+      price: currentPrice,
+    });
+    await trade.save();
     
     await prediction.save();
     await item.save();
@@ -696,25 +772,24 @@ router.get('/market/:itemId/data', async (req, res) => {
       }
     }
     
-    // Get all market predictions to show trading activity
-    const allMarketPredictions = await Prediction.find({
+    // Get all trades from Trade model to show trading activity
+    const allTrades = await Trade.find({
       [type === 'match' ? 'match' : 'poll']: itemId,
-      type: 'market',
     })
       .populate('user', 'username')
-      .sort({ updatedAt: -1 })
+      .sort({ createdAt: -1 })
       .limit(100); // Show up to 100 recent trades
     
-    // Format trades for display - show each prediction as a buy trade
-    // When users sell, we could track that separately, but for now we show all market positions
-    const formattedTrades = allMarketPredictions.map(trade => ({
+    // Format trades for display
+    const formattedTrades = allTrades.map(trade => ({
       id: trade._id,
       user: trade.user?.username || 'Unknown',
       outcome: trade.outcome,
       shares: trade.shares || 0,
-      totalInvested: trade.totalInvested || 0,
-      timestamp: trade.updatedAt || trade.createdAt,
-      type: 'buy', // All market predictions are purchases (sells reduce shares but don't create new predictions)
+      amount: trade.amount || 0,
+      price: trade.price || 0,
+      timestamp: trade.createdAt,
+      type: trade.type, // 'buy' or 'sell'
     }));
     
     res.json({
@@ -728,6 +803,51 @@ router.get('/market/:itemId/data', async (req, res) => {
         result: item.result,
       },
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Claim payout for a prediction
+router.post('/:predictionId/claim', auth, async (req, res) => {
+  try {
+    const prediction = await Prediction.findById(req.params.predictionId)
+      .populate('match')
+      .populate('poll');
+    
+    if (!prediction) {
+      return res.status(404).json({ message: 'Prediction not found' });
+    }
+    
+    if (prediction.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    
+    if (prediction.claimed) {
+      return res.status(400).json({ message: 'Already claimed' });
+    }
+    
+    if (prediction.status !== 'settled' || prediction.payout <= 0) {
+      return res.status(400).json({ message: 'No payout available' });
+    }
+    
+    const item = prediction.match || prediction.poll;
+    if (!item || !item.isResolved) {
+      return res.status(400).json({ message: 'Item not resolved' });
+    }
+    
+    // Mark as claimed
+    prediction.claimed = true;
+    await prediction.save();
+    
+    // Update user balance (if you have a balance field)
+    const user = await User.findById(req.user._id);
+    if (user) {
+      user.balance = (user.balance || 0) + prediction.payout;
+      await user.save();
+    }
+    
+    res.json({ prediction, message: 'Payout claimed successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

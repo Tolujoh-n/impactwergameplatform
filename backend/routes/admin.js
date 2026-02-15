@@ -411,6 +411,25 @@ router.post('/matches/:id/resolve', async (req, res) => {
       return res.status(400).json({ message: 'Invalid result. Must be teamA, teamB, or draw' });
     }
 
+    // Calculate total liquidity from all options
+    const totalMarketLiquidity = (match.marketTeamALiquidity || 0) + (match.marketTeamBLiquidity || 0) + (match.marketDrawLiquidity || 0);
+    const totalBoostPool = match.boostPool || 0;
+    
+    // Move all liquidity to winning option
+    if (normalizedResult === 'TeamA') {
+      match.marketTeamALiquidity = totalMarketLiquidity;
+      match.marketTeamBLiquidity = 0;
+      match.marketDrawLiquidity = 0;
+    } else if (normalizedResult === 'TeamB') {
+      match.marketTeamBLiquidity = totalMarketLiquidity;
+      match.marketTeamALiquidity = 0;
+      match.marketDrawLiquidity = 0;
+    } else if (normalizedResult === 'Draw') {
+      match.marketDrawLiquidity = totalMarketLiquidity;
+      match.marketTeamALiquidity = 0;
+      match.marketTeamBLiquidity = 0;
+    }
+    
     match.result = normalizedResult;
     match.status = 'completed';
     match.isResolved = true;
@@ -419,6 +438,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
     // Update all prediction types
     const predictions = await Prediction.find({ match: match._id });
     const boostPredictions = [];
+    const marketWinningPredictions = [];
     
     for (const prediction of predictions) {
       // Normalize outcome for comparison
@@ -429,22 +449,26 @@ router.post('/matches/:id/resolve', async (req, res) => {
         prediction.status = 'won';
       } else {
         prediction.status = 'lost';
+        // For losing market predictions, set shares to 0
+        if (prediction.type === 'market') {
+          prediction.shares = 0;
+        }
+        // For losing boost predictions, set amount to 0
+        if (prediction.type === 'boost') {
+          prediction.amount = 0;
+          prediction.totalStake = 0;
+        }
       }
       
-      // For market predictions, calculate payout based on shares
-      if (prediction.type === 'market' && prediction.status === 'won') {
-        // Market winners get payout based on their shares
-        const totalShares = (match.marketTeamAShares || 0) + (match.marketTeamBShares || 0) + (match.marketDrawShares || 0);
-        if (totalShares > 0) {
-          const winningShares = normalizedResult === 'TeamA' ? (match.marketTeamAShares || 0) :
-                               normalizedResult === 'TeamB' ? (match.marketTeamBShares || 0) :
-                               (match.marketDrawShares || 0);
-          const totalLiquidity = (match.marketTeamALiquidity || 0) + (match.marketTeamBLiquidity || 0) + (match.marketDrawLiquidity || 0);
-          if (winningShares > 0 && prediction.shares > 0) {
-            prediction.payout = (prediction.shares / winningShares) * totalLiquidity;
-          }
+      // For market predictions, calculate payout based on shares in winning option
+      if (prediction.type === 'market') {
+        if (prediction.status === 'won') {
+          marketWinningPredictions.push(prediction);
+        } else {
+          // Losing predictions get 0 payout
+          prediction.payout = 0;
+          prediction.status = 'settled';
         }
-        prediction.status = 'settled';
       }
       
       if (prediction.type === 'boost') {
@@ -454,9 +478,37 @@ router.post('/matches/:id/resolve', async (req, res) => {
       await prediction.save();
     }
 
-    // Calculate and update payouts for boost predictions
+    // Calculate market payouts: distribute total liquidity proportionally to winners
+    if (marketWinningPredictions.length > 0) {
+      const totalWinningShares = marketWinningPredictions.reduce((sum, p) => sum + (p.shares || 0), 0);
+      if (totalWinningShares > 0) {
+        for (const prediction of marketWinningPredictions) {
+          prediction.payout = (prediction.shares / totalWinningShares) * totalMarketLiquidity;
+          prediction.status = 'settled';
+          await prediction.save();
+        }
+      }
+    }
+
+    // Calculate and update payouts for boost predictions (move all to winning option proportionally)
     if (boostPredictions.length > 0) {
-      await calculateBoostPayouts(match._id);
+      const winningBoostPredictions = boostPredictions.filter(p => p.status === 'won');
+      const totalWinningStake = winningBoostPredictions.reduce((sum, p) => sum + (p.totalStake || p.amount || 0), 0);
+      
+      if (totalWinningStake > 0) {
+        for (const prediction of boostPredictions) {
+          if (prediction.status === 'won') {
+            // Distribute total boost pool proportionally
+            prediction.payout = ((prediction.totalStake || prediction.amount || 0) / totalWinningStake) * totalBoostPool;
+          } else {
+            // Losing predictions get 0
+            prediction.payout = 0;
+            prediction.amount = 0;
+            prediction.totalStake = 0;
+          }
+          await prediction.save();
+        }
+      }
     }
 
     res.json(match);
@@ -636,6 +688,36 @@ router.post('/polls/:id/resolve', async (req, res) => {
       poll.result = normalizedResult;
     }
     
+    // Calculate total liquidity from all options
+    let totalMarketLiquidity = 0;
+    const totalBoostPool = poll.boostPool || 0;
+    
+    if (poll.optionType === 'options') {
+      // For option-based polls, calculate total from all options
+      totalMarketLiquidity = poll.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+      
+      // Move all liquidity to winning option
+      poll.options.forEach((opt, idx) => {
+        if (idx === optionIndex) {
+          opt.liquidity = totalMarketLiquidity;
+        } else {
+          opt.liquidity = 0;
+        }
+      });
+    } else {
+      // Normal Yes/No poll
+      totalMarketLiquidity = (poll.marketYesLiquidity || 0) + (poll.marketNoLiquidity || 0);
+      
+      // Move all liquidity to winning option
+      if (normalizedResult === 'YES') {
+        poll.marketYesLiquidity = totalMarketLiquidity;
+        poll.marketNoLiquidity = 0;
+      } else {
+        poll.marketNoLiquidity = totalMarketLiquidity;
+        poll.marketYesLiquidity = 0;
+      }
+    }
+    
     poll.status = 'settled';
     poll.isResolved = true;
     await poll.save();
@@ -643,6 +725,7 @@ router.post('/polls/:id/resolve', async (req, res) => {
     // Update all prediction types
     const predictions = await Prediction.find({ poll: poll._id });
     const boostPredictions = [];
+    const marketWinningPredictions = [];
     
     for (const prediction of predictions) {
       let isWinner = false;
@@ -660,30 +743,26 @@ router.post('/polls/:id/resolve', async (req, res) => {
         prediction.status = 'won';
       } else {
         prediction.status = 'lost';
+        // For losing market predictions, set shares to 0
+        if (prediction.type === 'market') {
+          prediction.shares = 0;
+        }
+        // For losing boost predictions, set amount to 0
+        if (prediction.type === 'boost') {
+          prediction.amount = 0;
+          prediction.totalStake = 0;
+        }
       }
       
-      // For market predictions, calculate payout based on shares
-      if (prediction.type === 'market' && prediction.status === 'won') {
-        if (poll.optionType === 'options') {
-          // For option-based polls, calculate based on option shares
-          const winningOption = poll.options[optionIndex];
-          const totalShares = poll.options.reduce((sum, opt) => sum + (opt.shares || 0), 0);
-          if (totalShares > 0 && winningOption.shares > 0 && prediction.shares > 0) {
-            const totalLiquidity = poll.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
-            prediction.payout = (prediction.shares / winningOption.shares) * (winningOption.liquidity || 0);
-          }
+      // For market predictions, collect winners for proportional distribution
+      if (prediction.type === 'market') {
+        if (prediction.status === 'won') {
+          marketWinningPredictions.push(prediction);
         } else {
-          // Normal Yes/No poll
-          const totalShares = (poll.marketYesShares || 0) + (poll.marketNoShares || 0);
-          if (totalShares > 0) {
-            const winningShares = normalizedResult === 'YES' ? (poll.marketYesShares || 0) : (poll.marketNoShares || 0);
-            const totalLiquidity = (poll.marketYesLiquidity || 0) + (poll.marketNoLiquidity || 0);
-            if (winningShares > 0 && prediction.shares > 0) {
-              prediction.payout = (prediction.shares / winningShares) * totalLiquidity;
-            }
-          }
+          // Losing predictions get 0 payout
+          prediction.payout = 0;
+          prediction.status = 'settled';
         }
-        prediction.status = 'settled';
       }
       
       if (prediction.type === 'boost') {
@@ -693,9 +772,37 @@ router.post('/polls/:id/resolve', async (req, res) => {
       await prediction.save();
     }
 
-    // Calculate and update payouts for boost predictions
+    // Calculate market payouts: distribute total liquidity proportionally to winners
+    if (marketWinningPredictions.length > 0) {
+      const totalWinningShares = marketWinningPredictions.reduce((sum, p) => sum + (p.shares || 0), 0);
+      if (totalWinningShares > 0) {
+        for (const prediction of marketWinningPredictions) {
+          prediction.payout = (prediction.shares / totalWinningShares) * totalMarketLiquidity;
+          prediction.status = 'settled';
+          await prediction.save();
+        }
+      }
+    }
+
+    // Calculate and update payouts for boost predictions (move all to winning option proportionally)
     if (boostPredictions.length > 0) {
-      await calculateBoostPayouts(null, poll._id);
+      const winningBoostPredictions = boostPredictions.filter(p => p.status === 'won');
+      const totalWinningStake = winningBoostPredictions.reduce((sum, p) => sum + (p.totalStake || p.amount || 0), 0);
+      
+      if (totalWinningStake > 0) {
+        for (const prediction of boostPredictions) {
+          if (prediction.status === 'won') {
+            // Distribute total boost pool proportionally
+            prediction.payout = ((prediction.totalStake || prediction.amount || 0) / totalWinningStake) * totalBoostPool;
+          } else {
+            // Losing predictions get 0
+            prediction.payout = 0;
+            prediction.amount = 0;
+            prediction.totalStake = 0;
+          }
+          await prediction.save();
+        }
+      }
     }
 
     res.json(poll);

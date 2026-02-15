@@ -423,6 +423,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   const [amount, setAmount] = useState('');
   const [stakeAction, setStakeAction] = useState('add'); // 'add' or 'withdraw'
   const [stakeAmount, setStakeAmount] = useState('');
+  const { showNotification } = useNotification();
   
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
@@ -543,14 +544,59 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                 Your Prediction: {prediction.outcome}
               </p>
               <p className="text-gray-600 dark:text-gray-400 mb-2">
-                Staked Amount: {(prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
+                Staked Amount: {isResolved && !hasWon ? '0.0000' : (prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
               </p>
               {isResolved && (
-                <p className={`text-lg mb-2 ${hasWon ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                  Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
-                </p>
+                <>
+                  <p className={`text-lg mb-2 ${hasWon ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
+                    Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
+                  </p>
+                  {hasWon ? (
+                    prediction.claimed ? (
+                      <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Reward claimed</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                          Payout: {(prediction.payout || 0).toFixed(4)} ETH
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mt-4">
+                        <p className="text-gray-600 dark:text-gray-400 mb-2">
+                          Your Win: {(prediction.payout || 0).toFixed(4)} ETH
+                        </p>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await api.post(`/predictions/${prediction._id}/claim`);
+                              showNotification('Payout claimed successfully!', 'success');
+                              // Refresh prediction data
+                              window.location.reload();
+                            } catch (error) {
+                              showNotification(error.response?.data?.message || 'Failed to claim', 'error');
+                            }
+                          }}
+                          disabled={prediction.claimed}
+                          className={`px-6 py-2 rounded-lg transition-colors ${
+                            prediction.claimed
+                              ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                              : 'bg-green-500 text-white hover:bg-green-600'
+                          }`}
+                        >
+                          {prediction.claimed ? 'Reward Claimed' : 'Claim Rewards'}
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">You did not win this prediction</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                        Your stake was moved to the winning option
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
-              {canModify && (
+              {canModify && !isResolved && (
                 <div className="flex flex-wrap gap-2 mt-4">
                   <button
                     onClick={() => {
@@ -602,23 +648,10 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                   </button>
                 </div>
               )}
-              {locked && (
+              {locked && !isResolved && (
                 <p className="mt-4 px-4 py-2 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
                   Predictions are locked for this match/poll
                 </p>
-              )}
-              {hasWon && isResolved && (
-                <div>
-                  <p className="text-gray-600 dark:text-gray-400 mb-2">
-                    Payout: {prediction.payout || 0} ETH
-                  </p>
-                  <button
-                    onClick={onClaim}
-                    className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                  >
-                    Claim Rewards
-                  </button>
-                </div>
               )}
             </div>
           ) : !isResolved ? (
@@ -829,12 +862,14 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
   const [tradeType, setTradeType] = useState('buy');
   const [amount, setAmount] = useState('');
   const [trades, setTrades] = useState([]);
-  const [prediction, setPrediction] = useState(null);
+  const [predictions, setPredictions] = useState({}); // Map of outcome -> prediction
   const [prices, setPrices] = useState({});
+  const [priceAmounts, setPriceAmounts] = useState({}); // ETH amounts for each option
 
-  // Calculate prices based on liquidity
+  // Calculate prices and price amounts (ETH) based on liquidity
   useEffect(() => {
     let calculatedPrices = {};
+    let calculatedPriceAmounts = {};
     let totalLiquidity = 0;
     
     if (isPoll) {
@@ -843,12 +878,15 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
         totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
         item.options.forEach(opt => {
           calculatedPrices[opt.text] = totalLiquidity === 0 ? (1 / item.options.length) : (opt.liquidity || 0) / totalLiquidity;
+          calculatedPriceAmounts[opt.text] = opt.liquidity || 0;
         });
       } else {
         // Normal Yes/No poll
         totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
         calculatedPrices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
         calculatedPrices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
+        calculatedPriceAmounts.yes = item.marketYesLiquidity || 0;
+        calculatedPriceAmounts.no = item.marketNoLiquidity || 0;
       }
     } else {
       // Match: TeamA/TeamB/Draw
@@ -856,14 +894,21 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
       calculatedPrices.teamA = totalLiquidity === 0 ? 0.333 : (item.marketTeamALiquidity || 0) / totalLiquidity;
       calculatedPrices.teamB = totalLiquidity === 0 ? 0.333 : (item.marketTeamBLiquidity || 0) / totalLiquidity;
       calculatedPrices.draw = totalLiquidity === 0 ? 0.333 : (item.marketDrawLiquidity || 0) / totalLiquidity;
+      calculatedPriceAmounts.teamA = item.marketTeamALiquidity || 0;
+      calculatedPriceAmounts.teamB = item.marketTeamBLiquidity || 0;
+      calculatedPriceAmounts.draw = item.marketDrawLiquidity || 0;
     }
     
     setPrices(calculatedPrices);
+    setPriceAmounts(calculatedPriceAmounts);
   }, [item, isPoll]);
 
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
-  const hasWon = prediction && prediction.status === 'won';
+  
+  // Get winning predictions
+  const winningPredictions = Object.values(predictions).filter(p => p.status === 'won' || p.status === 'settled');
+  const hasWon = winningPredictions.length > 0;
 
   const fetchMarketData = useCallback(async () => {
     try {
@@ -885,11 +930,20 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
         ? `/predictions/poll/${item._id}/user?type=market`
         : `/predictions/match/${item._id}/user?type=market`;
       const response = await api.get(endpoint);
-      setPrediction(response.data);
       
-      // Prediction data is stored in state, shares info is in prediction.shares
+      // Handle array of predictions (one per option)
+      const predictionsArray = Array.isArray(response.data) ? response.data : (response.data ? [response.data] : []);
+      
+      // Convert to map by outcome
+      const predictionsMap = {};
+      predictionsArray.forEach(pred => {
+        const outcome = pred.outcome;
+        predictionsMap[outcome] = pred;
+      });
+      
+      setPredictions(predictionsMap);
     } catch (error) {
-      setPrediction(null);
+      setPredictions({});
     }
   }, [item._id, isPoll]);
 
@@ -941,10 +995,23 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
         });
         showNotification('Buy order executed successfully!', 'success');
       } else {
-        // For sell, we need to specify shares or use 'max'
+        // For sell, we need to specify outcome, shares or use 'max'
+        if (!selectedOption) {
+          showNotification('Please select an option to sell', 'warning');
+          return;
+        }
+        
+        // Check if user has shares for this option
+        const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
+        if (!optionPrediction || (optionPrediction.shares || 0) <= 0) {
+          showNotification('No shares to sell for this option', 'warning');
+          return;
+        }
+        
         const sharesToSell = amount === 'max' || amount === 'all' ? 'max' : parseFloat(amount);
         await api.post('/predictions/market/sell', {
           [isPoll ? 'pollId' : 'matchId']: item._id,
+          outcome: selectedOption,
           shares: sharesToSell,
         });
         showNotification('Sell order executed successfully!', 'success');
@@ -1070,6 +1137,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                               <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                                 {(optPrice * 100).toFixed(1)}%
                               </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                                {(priceAmounts[opt.text] || 0).toFixed(4)} ETH
+                              </p>
                               <p className="text-xs text-gray-500 dark:text-gray-400">{opt.text}</p>
                             </div>
                           );
@@ -1080,11 +1150,17 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                             <p className="text-3xl font-bold text-green-600 dark:text-green-400">
                               {(prices.yes * 100).toFixed(1)}%
                             </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                              {(priceAmounts.yes || 0).toFixed(4)} ETH
+                            </p>
                             <p className="text-sm text-gray-500 dark:text-gray-400">YES</p>
                           </div>
                           <div className="text-center">
                             <p className="text-3xl font-bold text-red-600 dark:text-red-400">
                               {(prices.no * 100).toFixed(1)}%
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                              {(priceAmounts.no || 0).toFixed(4)} ETH
                             </p>
                             <p className="text-sm text-gray-500 dark:text-gray-400">NO</p>
                           </div>
@@ -1099,11 +1175,17 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                             {(prices.teamA * 100).toFixed(1)}%
                           </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                            {(priceAmounts.teamA || 0).toFixed(4)} ETH
+                          </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{item.teamA}</p>
                         </div>
                         <div className="text-center">
                           <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                             {(prices.draw * 100).toFixed(1)}%
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                            {(priceAmounts.draw || 0).toFixed(4)} ETH
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Draw</p>
                         </div>
@@ -1113,6 +1195,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           )}
                           <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                             {(prices.teamB * 100).toFixed(1)}%
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                            {(priceAmounts.teamB || 0).toFixed(4)} ETH
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{item.teamB}</p>
                         </div>
@@ -1161,29 +1246,37 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           }
                         }
                         
+                        const tradeType = trade.type || 'buy';
+                        const tradeAmount = trade.amount || tradeInvested || 0;
+                        const tradePriceValue = trade.price || tradePrice || 0;
+                        
                         return (
                           <tr key={trade.id || trade._id || index}>
                             <td className="px-4 py-3 whitespace-nowrap">
-                              <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                BUY
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                tradeType === 'buy' 
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                  : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                              }`}>
+                                {tradeType.toUpperCase()}
                               </span>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
                               <span className={
-                                tradeOption === 'yes' || tradeOption === 'YES' || tradeOption === 'teamA' || tradeOption === 'TeamA' ? 'text-green-600 dark:text-green-400' :
-                                tradeOption === 'no' || tradeOption === 'NO' || tradeOption === 'teamB' || tradeOption === 'TeamB' ? 'text-red-600 dark:text-red-400' :
+                                tradeOption === 'yes' || tradeOption === 'YES' || tradeOption === 'teamA' || tradeOption === 'TeamA' || tradeOption === 'TEAMA' ? 'text-green-600 dark:text-green-400' :
+                                tradeOption === 'no' || tradeOption === 'NO' || tradeOption === 'teamB' || tradeOption === 'TeamB' || tradeOption === 'TEAMB' ? 'text-red-600 dark:text-red-400' :
                                 'text-purple-600 dark:text-purple-400'
                               }>
                                 {tradeOption === 'teamA' || tradeOption === 'TeamA' || tradeOption === 'TEAMA' ? item.teamA : 
                                  tradeOption === 'teamB' || tradeOption === 'TeamB' || tradeOption === 'TEAMB' ? item.teamB : 
-                                 tradeOption ? tradeOption.toUpperCase() : 'N/A'}
+                                 tradeOption ? (isPoll && item.optionType === 'options' ? tradeOption : tradeOption.toUpperCase()) : 'N/A'}
                               </span>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {tradeShares > 0 ? `${tradeShares.toFixed(4)} Shares` : `${tradeInvested.toFixed(4)} ETH`}
+                              {tradeShares > 0 ? `${tradeShares.toFixed(4)} Shares` : `${tradeAmount.toFixed(4)} ETH`}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {tradePrice ? (tradePrice * 100).toFixed(2) : '0.00'}%
+                              {tradePriceValue ? (tradePriceValue * 100).toFixed(2) : '0.00'}%
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                               {tradeTimestamp.toLocaleTimeString()}
@@ -1278,6 +1371,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                             <div className="flex-1 text-left">
                               <div>{opt.text}</div>
                               <div className="text-xs mt-1">{(optPrice * 100).toFixed(1)}%</div>
+                              <div className="text-xs mt-0.5 font-semibold">{(priceAmounts[opt.text] || 0).toFixed(4)} ETH</div>
                             </div>
                           </button>
                         );
@@ -1302,6 +1396,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                       >
                         YES
                         <div className="text-xs mt-1">{(prices.yes * 100).toFixed(1)}%</div>
+                        <div className="text-xs mt-0.5 font-semibold">{(priceAmounts.yes || 0).toFixed(4)} ETH</div>
                       </button>
                       <button
                         onClick={() => {
@@ -1320,6 +1415,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                       >
                         NO
                         <div className="text-xs mt-1">{(prices.no * 100).toFixed(1)}%</div>
+                        <div className="text-xs mt-0.5 font-semibold">{(priceAmounts.no || 0).toFixed(4)} ETH</div>
                       </button>
                     </div>
                   )
@@ -1346,6 +1442,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                       )}
                       <div className="truncate text-xs">{item.teamA}</div>
                       <div className="text-xs mt-1">{(prices.teamA * 100).toFixed(1)}%</div>
+                      <div className="text-xs mt-0.5 font-semibold">{(priceAmounts.teamA || 0).toFixed(4)} ETH</div>
                     </button>
                     <button
                       onClick={() => {
@@ -1364,6 +1461,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                     >
                       Draw
                       <div className="text-xs mt-1">{(prices.draw * 100).toFixed(1)}%</div>
+                      <div className="text-xs mt-0.5 font-semibold">{(priceAmounts.draw || 0).toFixed(4)} ETH</div>
                     </button>
                     <button
                       onClick={() => {
@@ -1386,6 +1484,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                       )}
                       <div className="truncate text-xs">{item.teamB}</div>
                       <div className="text-xs mt-1">{(prices.teamB * 100).toFixed(1)}%</div>
+                      <div className="text-xs mt-0.5 font-semibold">{(priceAmounts.teamB || 0).toFixed(4)} ETH</div>
                     </button>
                   </div>
                 )}
@@ -1409,7 +1508,10 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                     }`}
                     placeholder={tradeType === 'buy' ? "0.0" : "0"}
                   />
-                  {tradeType === 'sell' && prediction && prediction.shares > 0 && (
+                  {tradeType === 'sell' && selectedOption && (() => {
+                  const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
+                  const availableShares = optionPrediction?.shares || 0;
+                  return availableShares > 0 && (
                     <button
                       onClick={() => {
                         if (!locked) {
@@ -1425,24 +1527,42 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                     >
                       Max
                     </button>
-                  )}
+                  );
+                })()}
                 </div>
                 {tradeType === 'buy' && selectedOption && amount && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     You'll receive ~{((parseFloat(amount) || 0) / (prices[selectedOption] || 1)).toFixed(4)} shares
                   </p>
                 )}
-                {tradeType === 'sell' && prediction && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Available: {prediction.shares || 0} shares
-                  </p>
-                )}
+                {tradeType === 'sell' && selectedOption && (() => {
+                  const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
+                  const availableShares = optionPrediction?.shares || 0;
+                  return (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Available: {availableShares.toFixed(4)} shares
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Trade Button */}
               <button
                 onClick={handleTrade}
-                disabled={locked || (tradeType === 'buy' ? (!selectedOption || !amount) : (!prediction || !amount || (amount !== 'max' && parseFloat(amount) > (prediction.shares || 0))))}
+                disabled={(() => {
+                  if (locked) return true;
+                  if (tradeType === 'buy') {
+                    return !selectedOption || !amount;
+                  } else {
+                    // For sell, check holdings for selected option
+                    if (!selectedOption || !amount) return true;
+                    const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
+                    const availableShares = optionPrediction?.shares || 0;
+                    if (availableShares <= 0) return true;
+                    if (amount !== 'max' && amount !== 'all' && parseFloat(amount) > availableShares) return true;
+                    return false;
+                  }
+                })()}
                 className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
                   locked
                     ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
@@ -1457,9 +1577,15 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   selectedOption === 'no' ? 'NO' :
                   selectedOption === 'teamA' ? item.teamA :
                   selectedOption === 'teamB' ? item.teamB :
-                  selectedOption === 'draw' ? 'Draw' : ''
+                  selectedOption === 'draw' ? 'Draw' :
+                  isPoll && item.optionType === 'options' ? selectedOption : ''
                 ) : (
-                  prediction?.outcome || 'Shares'
+                  selectedOption === 'yes' ? 'YES' :
+                  selectedOption === 'no' ? 'NO' :
+                  selectedOption === 'teamA' ? item.teamA :
+                  selectedOption === 'teamB' ? item.teamB :
+                  selectedOption === 'draw' ? 'Draw' :
+                  isPoll && item.optionType === 'options' ? selectedOption : 'Shares'
                 )}
               </button>
 
@@ -1471,46 +1597,95 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   </h3>
                   <div className="space-y-2 text-sm">
                     {isPoll ? (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600 dark:text-gray-400">YES Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'YES' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600 dark:text-gray-400">NO Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'NO' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
-                        </div>
-                      </>
+                      item.optionType === 'options' && item.options ? (
+                        // Option-based poll
+                        item.options.map((opt, idx) => {
+                          const optionPrediction = predictions[opt.text] || {};
+                          const shares = optionPrediction.shares || 0;
+                          return (
+                            <div key={idx} className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">{opt.text} Shares:</span>
+                              <span className="font-medium text-gray-900 dark:text-white">{shares.toFixed(4)}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        // Normal Yes/No poll
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">YES Shares:</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{(predictions['YES']?.shares || predictions['yes']?.shares || 0).toFixed(4)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">NO Shares:</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{(predictions['NO']?.shares || predictions['no']?.shares || 0).toFixed(4)}</span>
+                          </div>
+                        </>
+                      )
                     ) : (
+                      // Match
                       <>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">{item.teamA} Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'TeamA' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{(predictions['TEAMA']?.shares || predictions['TeamA']?.shares || predictions['teamA']?.shares || 0).toFixed(4)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">Draw Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'Draw' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{(predictions['DRAW']?.shares || predictions['Draw']?.shares || predictions['draw']?.shares || 0).toFixed(4)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">{item.teamB} Shares:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{prediction?.outcome === 'TeamB' ? (prediction.shares || 0).toFixed(4) : '0'}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{(predictions['TEAMB']?.shares || predictions['TeamB']?.shares || predictions['teamB']?.shares || 0).toFixed(4)}</span>
                         </div>
                       </>
                     )}
-                    {prediction && (
-                      <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <span className="text-gray-600 dark:text-gray-400">Total Invested:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{(prediction.totalInvested || 0).toFixed(4)} ETH</span>
-                      </div>
-                    )}
+                    <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Total Invested:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {Object.values(predictions).reduce((sum, p) => sum + (p.totalInvested || 0), 0).toFixed(4)} ETH
+                      </span>
+                    </div>
                   </div>
-                  {isResolved && hasWon && (
-                    <button
-                      onClick={handleClaim}
-                      className="w-full mt-4 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                    >
-                      Claim Winnings
-                    </button>
+                  
+                  {/* Resolved State */}
+                  {isResolved && (
+                    <div className="mt-4">
+                      {hasWon ? (
+                        winningPredictions.map((pred, idx) => {
+                          if (pred.claimed) {
+                            return (
+                              <div key={idx} className="mb-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Reward claimed</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                  {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
+                                </p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <button
+                              key={idx}
+                              onClick={async () => {
+                                try {
+                                  await api.post(`/predictions/${pred._id}/claim`);
+                                  showNotification('Payout claimed successfully!', 'success');
+                                  fetchUserMarketPrediction();
+                                } catch (error) {
+                                  showNotification(error.response?.data?.message || 'Failed to claim', 'error');
+                                }
+                              }}
+                              className="w-full mb-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                            >
+                              Claim {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                          <p className="text-sm text-gray-600 dark:text-gray-400">You did not win this prediction</p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

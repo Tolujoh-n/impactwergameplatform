@@ -51,6 +51,10 @@ const predictionSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  claimed: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
