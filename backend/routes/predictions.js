@@ -35,8 +35,8 @@ router.post('/free', auth, async (req, res) => {
     }
 
     // Get daily free play limit from settings
-    const settings = await Settings.findOne();
-    const dailyFreePlayLimit = settings?.freePlayLimit || 1;
+    const settings = await Settings.findOne({ key: 'dailyFreePlayLimit' });
+    const dailyFreePlayLimit = settings && settings.value ? parseInt(settings.value) : 1;
 
     // Check if user has a ticket
     const today = new Date();
@@ -568,28 +568,73 @@ router.post('/market/sell', auth, async (req, res) => {
       return res.status(400).json({ message: 'Outcome is required for selling' });
     }
     
+    // Get item first to check optionType
+    let item = null;
+    if (matchId) {
+      item = await Match.findById(matchId);
+      if (!item) {
+        return res.status(404).json({ message: 'Match not found' });
+      }
+    } else {
+      item = await Poll.findById(pollId);
+      if (!item) {
+        return res.status(404).json({ message: 'Poll not found' });
+      }
+    }
+    
+    // Normalize outcome BEFORE searching for prediction (must match how it was stored during buy)
     let normalizedOutcome = outcome;
+    if (matchId) {
+      // For matches: normalize to TEAMA, TEAMB, DRAW (same as buy route)
+      normalizedOutcome = outcome.toUpperCase();
+    } else {
+      // For polls
+      if (item.optionType === 'options') {
+        // For option-based polls, keep as-is (exact text match, same as buy route)
+        normalizedOutcome = outcome;
+      } else {
+        // Normal Yes/No poll: normalize to YES/NO (same as buy route)
+        normalizedOutcome = outcome.toUpperCase();
+      }
+    }
     
     // Find prediction FOR THIS SPECIFIC OPTION (isolated per option)
-    const query = {
+    // Try multiple variations to find the prediction (in case of case mismatches)
+    let query = {
       user: req.user._id,
       type: 'market',
-      outcome: normalizedOutcome, // Include outcome in query to isolate per option
     };
     if (matchId) query.match = matchId;
     if (pollId) query.poll = pollId;
     
-    const prediction = await Prediction.findOne(query)
+    // Try to find prediction with normalized outcome (primary search)
+    let prediction = await Prediction.findOne({ ...query, outcome: normalizedOutcome })
       .populate('match')
       .populate('poll');
     
+    // If not found, try with original outcome (for option-based polls)
     if (!prediction) {
-      return res.status(404).json({ message: 'No market position found for this option' });
+      prediction = await Prediction.findOne({ ...query, outcome: outcome })
+        .populate('match')
+        .populate('poll');
     }
     
-    let item = prediction.match || prediction.poll;
-    if (!item) {
-      return res.status(404).json({ message: 'Item not found' });
+    // If still not found, try uppercase version
+    if (!prediction) {
+      prediction = await Prediction.findOne({ ...query, outcome: outcome.toUpperCase() })
+        .populate('match')
+        .populate('poll');
+    }
+    
+    // If still not found, try lowercase version
+    if (!prediction) {
+      prediction = await Prediction.findOne({ ...query, outcome: outcome.toLowerCase() })
+        .populate('match')
+        .populate('poll');
+    }
+    
+    if (!prediction) {
+      return res.status(404).json({ message: 'No market position found for this option' });
     }
     
     if (item.status === 'locked' || item.status === 'completed' || item.status === 'settled' || item.isResolved) {
@@ -611,16 +656,8 @@ router.post('/market/sell', auth, async (req, res) => {
       return res.status(400).json({ message: 'Invalid shares amount' });
     }
     
-    // Normalize outcome for calculations
-    if (matchId) {
-      normalizedOutcome = outcome.toUpperCase();
-    } else {
-      if (item.optionType === 'options') {
-        normalizedOutcome = outcome; // Keep as-is for option-based polls
-      } else {
-        normalizedOutcome = outcome.toUpperCase();
-      }
-    }
+    // Use the prediction's stored outcome for calculations
+    normalizedOutcome = prediction.outcome;
     
     // Calculate payout based on current market price
     let totalLiquidity = 0;

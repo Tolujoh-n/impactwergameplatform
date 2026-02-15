@@ -119,6 +119,9 @@ const MatchDetail = () => {
           showNotification('Boost prediction submitted successfully!', 'success');
         }
       }
+      
+      // Refresh item data to get updated stats (like freePredictions count, boostPool, etc.)
+      await fetchData();
       await fetchUserPrediction();
     } catch (error) {
       showNotification(error.response?.data?.message || 'Failed to submit prediction', 'error');
@@ -182,7 +185,21 @@ const MatchDetail = () => {
   } else if (type === 'boost') {
     return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onStakeAction={handleStakeAction} onClaim={handleClaim} navigate={navigate} locked={locked} />;
   } else if (type === 'market') {
-    return <MarketMatchView item={item} isPoll={isPoll} navigate={navigate} user={user} showNotification={showNotification} locked={locked} />;
+    return <MarketMatchView 
+      item={item} 
+      isPoll={isPoll} 
+      navigate={navigate} 
+      user={user} 
+      showNotification={showNotification} 
+      locked={locked}
+      onItemUpdate={(updatedItem) => {
+        if (isPoll) {
+          setPoll(updatedItem);
+        } else {
+          setMatch(updatedItem);
+        }
+      }}
+    />;
   }
 
   return null;
@@ -857,7 +874,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   );
 };
 
-const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locked = false }) => {
+const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locked = false, onItemUpdate }) => {
   const [selectedOption, setSelectedOption] = useState(null);
   const [tradeType, setTradeType] = useState('buy');
   const [amount, setAmount] = useState('');
@@ -865,6 +882,15 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
   const [predictions, setPredictions] = useState({}); // Map of outcome -> prediction
   const [prices, setPrices] = useState({});
   const [priceAmounts, setPriceAmounts] = useState({}); // ETH amounts for each option
+  const [currentItem, setCurrentItem] = useState(item);
+
+  // Computed value for itemData - always use currentItem if available, fallback to item
+  const itemData = currentItem || item;
+
+  // Update currentItem when item prop changes
+  useEffect(() => {
+    setCurrentItem(item);
+  }, [item]);
 
   // Calculate prices and price amounts (ETH) based on liquidity
   useEffect(() => {
@@ -874,34 +900,34 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     
     if (isPoll) {
       // Poll: Handle option-based or Yes/No
-      if (item.optionType === 'options' && item.options) {
-        totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
-        item.options.forEach(opt => {
-          calculatedPrices[opt.text] = totalLiquidity === 0 ? (1 / item.options.length) : (opt.liquidity || 0) / totalLiquidity;
+      if (itemData.optionType === 'options' && itemData.options) {
+        totalLiquidity = itemData.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+        itemData.options.forEach(opt => {
+          calculatedPrices[opt.text] = totalLiquidity === 0 ? (1 / itemData.options.length) : (opt.liquidity || 0) / totalLiquidity;
           calculatedPriceAmounts[opt.text] = opt.liquidity || 0;
         });
       } else {
         // Normal Yes/No poll
-        totalLiquidity = (item.marketYesLiquidity || 0) + (item.marketNoLiquidity || 0);
-        calculatedPrices.yes = totalLiquidity === 0 ? 0.5 : (item.marketYesLiquidity || 0) / totalLiquidity;
-        calculatedPrices.no = totalLiquidity === 0 ? 0.5 : (item.marketNoLiquidity || 0) / totalLiquidity;
-        calculatedPriceAmounts.yes = item.marketYesLiquidity || 0;
-        calculatedPriceAmounts.no = item.marketNoLiquidity || 0;
+        totalLiquidity = (itemData.marketYesLiquidity || 0) + (itemData.marketNoLiquidity || 0);
+        calculatedPrices.yes = totalLiquidity === 0 ? 0.5 : (itemData.marketYesLiquidity || 0) / totalLiquidity;
+        calculatedPrices.no = totalLiquidity === 0 ? 0.5 : (itemData.marketNoLiquidity || 0) / totalLiquidity;
+        calculatedPriceAmounts.yes = itemData.marketYesLiquidity || 0;
+        calculatedPriceAmounts.no = itemData.marketNoLiquidity || 0;
       }
     } else {
       // Match: TeamA/TeamB/Draw
-      totalLiquidity = (item.marketTeamALiquidity || 0) + (item.marketTeamBLiquidity || 0) + (item.marketDrawLiquidity || 0);
-      calculatedPrices.teamA = totalLiquidity === 0 ? 0.333 : (item.marketTeamALiquidity || 0) / totalLiquidity;
-      calculatedPrices.teamB = totalLiquidity === 0 ? 0.333 : (item.marketTeamBLiquidity || 0) / totalLiquidity;
-      calculatedPrices.draw = totalLiquidity === 0 ? 0.333 : (item.marketDrawLiquidity || 0) / totalLiquidity;
-      calculatedPriceAmounts.teamA = item.marketTeamALiquidity || 0;
-      calculatedPriceAmounts.teamB = item.marketTeamBLiquidity || 0;
-      calculatedPriceAmounts.draw = item.marketDrawLiquidity || 0;
+      totalLiquidity = (itemData.marketTeamALiquidity || 0) + (itemData.marketTeamBLiquidity || 0) + (itemData.marketDrawLiquidity || 0);
+      calculatedPrices.teamA = totalLiquidity === 0 ? 0.333 : (itemData.marketTeamALiquidity || 0) / totalLiquidity;
+      calculatedPrices.teamB = totalLiquidity === 0 ? 0.333 : (itemData.marketTeamBLiquidity || 0) / totalLiquidity;
+      calculatedPrices.draw = totalLiquidity === 0 ? 0.333 : (itemData.marketDrawLiquidity || 0) / totalLiquidity;
+      calculatedPriceAmounts.teamA = itemData.marketTeamALiquidity || 0;
+      calculatedPriceAmounts.teamB = itemData.marketTeamBLiquidity || 0;
+      calculatedPriceAmounts.draw = itemData.marketDrawLiquidity || 0;
     }
     
     setPrices(calculatedPrices);
     setPriceAmounts(calculatedPriceAmounts);
-  }, [item, isPoll]);
+  }, [currentItem, item, isPoll]);
 
   const isResolved = item.isResolved;
   const resolvedOutcome = item.result;
@@ -912,7 +938,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
 
   const fetchMarketData = useCallback(async () => {
     try {
-      const response = await api.get(`/predictions/market/${item._id}/data?type=${isPoll ? 'poll' : 'match'}`);
+      const itemId = (currentItem || item)?._id || item?._id;
+      const response = await api.get(`/predictions/market/${itemId}/data?type=${isPoll ? 'poll' : 'match'}`);
       setTrades(response.data.recentTrades || []);
       
       // Update prices from API
@@ -922,13 +949,14 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     } catch (error) {
       console.error('Error fetching market data:', error);
     }
-  }, [item._id, isPoll]);
+  }, [currentItem, item, isPoll]);
 
   const fetchUserMarketPrediction = useCallback(async () => {
     try {
+      const itemId = (currentItem || item)?._id || item?._id;
       const endpoint = isPoll 
-        ? `/predictions/poll/${item._id}/user?type=market`
-        : `/predictions/match/${item._id}/user?type=market`;
+        ? `/predictions/poll/${itemId}/user?type=market`
+        : `/predictions/match/${itemId}/user?type=market`;
       const response = await api.get(endpoint);
       
       // Handle array of predictions (one per option)
@@ -945,7 +973,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     } catch (error) {
       setPredictions({});
     }
-  }, [item._id, isPoll]);
+  }, [currentItem, item, isPoll]);
 
   useEffect(() => {
     fetchMarketData();
@@ -962,7 +990,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     }, 5000);
     
     return () => clearInterval(interval);
-  }, [item._id, user, isPoll, fetchMarketData, fetchUserMarketPrediction]);
+  }, [currentItem, item, user, isPoll, fetchMarketData, fetchUserMarketPrediction]);
 
   const handleTrade = async () => {
     if (!user) {
@@ -971,7 +999,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     }
 
     // Check if locked
-    if (locked || item.status === 'locked' || (item.lockedTime && new Date() >= new Date(item.lockedTime))) {
+    if (locked || itemData.status === 'locked' || (itemData.lockedTime && new Date() >= new Date(itemData.lockedTime))) {
       showNotification('Trading is locked for this match/poll', 'error');
       return;
     }
@@ -989,7 +1017,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     try {
       if (tradeType === 'buy') {
         await api.post('/predictions/market/buy', {
-          [isPoll ? 'pollId' : 'matchId']: item._id,
+          [isPoll ? 'pollId' : 'matchId']: itemData._id,
           outcome: selectedOption,
           amount: parseFloat(amount),
         });
@@ -1001,24 +1029,76 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           return;
         }
         
-        // Check if user has shares for this option
-        const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
+        // Find the prediction for this option (try multiple variations)
+        let optionPrediction = predictions[selectedOption];
+        if (!optionPrediction) {
+          optionPrediction = predictions[selectedOption.toUpperCase()] || 
+                           predictions[selectedOption.toLowerCase()] ||
+                           predictions[selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1).toLowerCase()];
+        }
+        
+        // For matches, also try normalized versions
+        if (!optionPrediction && !isPoll) {
+          const normalized = selectedOption === 'teamA' ? 'TEAMA' : 
+                            selectedOption === 'teamB' ? 'TEAMB' : 
+                            selectedOption === 'draw' ? 'DRAW' : selectedOption.toUpperCase();
+          optionPrediction = predictions[normalized];
+        }
+        
         if (!optionPrediction || (optionPrediction.shares || 0) <= 0) {
           showNotification('No shares to sell for this option', 'warning');
           return;
         }
         
-        const sharesToSell = amount === 'max' || amount === 'all' ? 'max' : parseFloat(amount);
+        // Use the prediction's stored outcome (this is what's in the database)
+        const outcomeToSend = optionPrediction.outcome || selectedOption;
+        const availableShares = optionPrediction.shares || 0;
+        
+        // Handle max button - convert to actual number
+        let sharesToSell;
+        if (amount === 'max' || amount === 'all') {
+          sharesToSell = 'max';
+        } else {
+          const parsedAmount = parseFloat(amount);
+          if (isNaN(parsedAmount) || parsedAmount <= 0) {
+            showNotification('Please enter a valid amount', 'warning');
+            return;
+          }
+          if (parsedAmount > availableShares) {
+            showNotification(`Cannot sell more than ${availableShares.toFixed(4)} shares`, 'warning');
+            return;
+          }
+          sharesToSell = parsedAmount;
+        }
+        
         await api.post('/predictions/market/sell', {
-          [isPoll ? 'pollId' : 'matchId']: item._id,
-          outcome: selectedOption,
+          [isPoll ? 'pollId' : 'matchId']: itemData._id,
+          outcome: outcomeToSend, // Use the stored outcome from prediction
           shares: sharesToSell,
         });
         showNotification('Sell order executed successfully!', 'success');
       }
       setAmount('');
-      await fetchMarketData();
-      await fetchUserMarketPrediction();
+      
+      // Immediately refresh all data after trade
+      // Refresh item data to get updated liquidity
+      const itemResponse = isPoll 
+        ? await api.get(`/polls/${itemData._id}`)
+        : await api.get(`/matches/${itemData._id}`);
+      
+      // Update current item state
+      setCurrentItem(itemResponse.data);
+      
+      // Update item in parent component if callback provided
+      if (onItemUpdate) {
+        onItemUpdate(itemResponse.data);
+      }
+      
+      // Refresh market data and user predictions
+      await Promise.all([
+        fetchMarketData(),
+        fetchUserMarketPrediction()
+      ]);
     } catch (error) {
       showNotification(error.response?.data?.message || 'Trade failed', 'error');
     }
@@ -1060,19 +1140,19 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
             {/* Status Tag */}
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
               isPoll 
-                ? (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
-                   item.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
-                   item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                ? (itemData.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                   itemData.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                   itemData.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
                    'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
-                : (item.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
-                   item.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
-                   item.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                : (itemData.status === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                   itemData.status === 'live' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                   itemData.status === 'locked' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
                    'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200')
             }`}>
-              {item.status?.toUpperCase() || 'N/A'}
+              {itemData.status?.toUpperCase() || 'N/A'}
             </span>
             {/* Resolved Tag */}
-            {item.isResolved && (
+            {itemData.isResolved && (
               <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs font-semibold">
                 RESOLVED
               </span>
@@ -1084,25 +1164,25 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           {!isPoll && (
             <div className="flex items-center justify-center gap-8 mb-6">
               <div className="flex flex-col items-center">
-                {item.teamAImage && (
-                  <img src={item.teamAImage} alt={item.teamA} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                {itemData.teamAImage && (
+                  <img src={itemData.teamAImage} alt={itemData.teamA} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
                 )}
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamA}</h2>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{itemData.teamA}</h2>
               </div>
               <div className="text-2xl font-bold text-gray-500 dark:text-gray-400">VS</div>
               <div className="flex flex-col items-center">
-                {item.teamBImage && (
-                  <img src={item.teamBImage} alt={item.teamB} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
+                {itemData.teamBImage && (
+                  <img src={itemData.teamBImage} alt={itemData.teamB} className="w-24 h-24 object-cover rounded-full mb-2 border-4 border-gray-200 dark:border-gray-700" />
                 )}
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{item.teamB}</h2>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{itemData.teamB}</h2>
               </div>
             </div>
           )}
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 text-center">
-            {isPoll ? item.question : `${item.teamA} vs ${item.teamB}`}
+            {isPoll ? itemData.question : `${itemData.teamA} vs ${itemData.teamB}`}
           </h1>
           <p className="text-gray-600 dark:text-gray-400 text-center">
-            {isPoll ? item.description : `${new Date(item.date).toLocaleDateString()} • ${item.stageName || ''}`}
+            {isPoll ? itemData.description : `${new Date(itemData.date).toLocaleDateString()} • ${itemData.stageName || ''}`}
           </p>
           {isResolved && (
             <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900 rounded-lg">
@@ -1124,10 +1204,10 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
               <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
                 <div className="text-center">
                   <p className="text-gray-500 dark:text-gray-400 mb-4">Price Chart</p>
-                  <div className={`flex items-center justify-center ${isPoll ? (item.optionType === 'options' && item.options ? 'space-x-4 flex-wrap' : 'space-x-8') : 'space-x-4'}`}>
+                  <div className={`flex items-center justify-center ${isPoll ? (itemData.optionType === 'options' && itemData.options ? 'space-x-4 flex-wrap' : 'space-x-8') : 'space-x-4'}`}>
                     {isPoll ? (
-                      item.optionType === 'options' && item.options ? (
-                        item.options.map((opt, idx) => {
+                      itemData.optionType === 'options' && itemData.options ? (
+                        itemData.options.map((opt, idx) => {
                           const optPrice = prices[opt.text] || 0;
                           return (
                             <div key={idx} className="text-center flex flex-col items-center">
@@ -1169,8 +1249,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                     ) : (
                       <>
                         <div className="text-center flex flex-col items-center">
-                          {item.teamAImage && (
-                            <img src={item.teamAImage} alt={item.teamA} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
+                          {itemData.teamAImage && (
+                            <img src={itemData.teamAImage} alt={itemData.teamA} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
                           )}
                           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                             {(prices.teamA * 100).toFixed(1)}%
@@ -1178,7 +1258,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
                             {(priceAmounts.teamA || 0).toFixed(4)} ETH
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{item.teamA}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{itemData.teamA}</p>
                         </div>
                         <div className="text-center">
                           <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
@@ -1190,8 +1270,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           <p className="text-xs text-gray-500 dark:text-gray-400">Draw</p>
                         </div>
                         <div className="text-center flex flex-col items-center">
-                          {item.teamBImage && (
-                            <img src={item.teamBImage} alt={item.teamB} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
+                          {itemData.teamBImage && (
+                            <img src={itemData.teamBImage} alt={itemData.teamB} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
                           )}
                           <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                             {(prices.teamB * 100).toFixed(1)}%
@@ -1199,7 +1279,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
                             {(priceAmounts.teamB || 0).toFixed(4)} ETH
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{item.teamB}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{itemData.teamB}</p>
                         </div>
                       </>
                     )}
@@ -1267,16 +1347,59 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                                 tradeOption === 'no' || tradeOption === 'NO' || tradeOption === 'teamB' || tradeOption === 'TeamB' || tradeOption === 'TEAMB' ? 'text-red-600 dark:text-red-400' :
                                 'text-purple-600 dark:text-purple-400'
                               }>
-                                {tradeOption === 'teamA' || tradeOption === 'TeamA' || tradeOption === 'TEAMA' ? item.teamA : 
-                                 tradeOption === 'teamB' || tradeOption === 'TeamB' || tradeOption === 'TEAMB' ? item.teamB : 
-                                 tradeOption ? (isPoll && item.optionType === 'options' ? tradeOption : tradeOption.toUpperCase()) : 'N/A'}
+                                {tradeOption === 'teamA' || tradeOption === 'TeamA' || tradeOption === 'TEAMA' ? itemData.teamA : 
+                                 tradeOption === 'teamB' || tradeOption === 'TeamB' || tradeOption === 'TEAMB' ? itemData.teamB : 
+                                 tradeOption ? (isPoll && itemData.optionType === 'options' ? tradeOption : tradeOption.toUpperCase()) : 'N/A'}
                               </span>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                               {tradeShares > 0 ? `${tradeShares.toFixed(4)} Shares` : `${tradeAmount.toFixed(4)} ETH`}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {tradePriceValue ? (tradePriceValue * 100).toFixed(2) : '0.00'}%
+                              {(() => {
+                                // Calculate ETH price per share at time of trade
+                                // If we have both amount and shares, price = amount / shares
+                                if (tradeShares > 0 && tradeAmount > 0) {
+                                  return `${(tradeAmount / tradeShares).toFixed(4)} ETH`;
+                                }
+                                // Fallback: calculate from stored price (percentage) and current market state
+                                if (tradePriceValue > 0) {
+                                  const normalizedOption = tradeOption.toUpperCase();
+                                  let optionLiquidity = 0;
+                                  let totalSharesForOption = 0;
+                                  
+                                  if (isPoll) {
+                                    if (itemData.optionType === 'options' && itemData.options) {
+                                      const opt = itemData.options.find(o => o.text === tradeOption);
+                                      if (opt) {
+                                        optionLiquidity = opt.liquidity || 0;
+                                        totalSharesForOption = opt.shares || 0;
+                                      }
+                                    } else {
+                                      optionLiquidity = normalizedOption === 'YES' ? (itemData.marketYesLiquidity || 0) : (itemData.marketNoLiquidity || 0);
+                                      totalSharesForOption = normalizedOption === 'YES' ? (itemData.marketYesShares || 0) : (itemData.marketNoShares || 0);
+                                    }
+                                  } else {
+                                    if (normalizedOption === 'TEAMA') {
+                                      optionLiquidity = itemData.marketTeamALiquidity || 0;
+                                      totalSharesForOption = itemData.marketTeamAShares || 0;
+                                    } else if (normalizedOption === 'TEAMB') {
+                                      optionLiquidity = itemData.marketTeamBLiquidity || 0;
+                                      totalSharesForOption = itemData.marketTeamBShares || 0;
+                                    } else if (normalizedOption === 'DRAW') {
+                                      optionLiquidity = itemData.marketDrawLiquidity || 0;
+                                      totalSharesForOption = itemData.marketDrawShares || 0;
+                                    }
+                                  }
+                                  
+                                  // Calculate ETH price per share: (price percentage) * (option liquidity) / (total shares)
+                                  if (totalSharesForOption > 0) {
+                                    const ethPrice = tradePriceValue * optionLiquidity / totalSharesForOption;
+                                    return `${ethPrice.toFixed(4)} ETH`;
+                                  }
+                                }
+                                return 'N/A';
+                              })()}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                               {tradeTimestamp.toLocaleTimeString()}
@@ -1308,8 +1431,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
               {locked && (
                 <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
                   <p className="text-sm font-semibold">Trading is locked for this match/poll</p>
-                  {item.lockedTime && (
-                    <p className="text-xs mt-1">Locked since: {new Date(item.lockedTime).toLocaleString()}</p>
+                  {itemData.lockedTime && (
+                    <p className="text-xs mt-1">Locked since: {new Date(itemData.lockedTime).toLocaleString()}</p>
                   )}
                 </div>
               )}
@@ -1344,9 +1467,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   Select Option
                 </label>
                 {isPoll ? (
-                  item.optionType === 'options' && item.options ? (
+                  itemData.optionType === 'options' && itemData.options ? (
                     <div className="grid grid-cols-1 gap-2">
-                      {item.options.map((opt, idx) => {
+                      {itemData.options.map((opt, idx) => {
                         const optPrice = prices[opt.text] || 0;
                         return (
                           <button
@@ -1435,12 +1558,12 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
-                      title={`${item.teamA} Win`}
+                      title={`${itemData.teamA} Win`}
                     >
-                      {item.teamAImage && (
-                        <img src={item.teamAImage} alt={item.teamA} className="w-8 h-8 object-cover rounded-full mb-1" />
+                      {itemData.teamAImage && (
+                        <img src={itemData.teamAImage} alt={itemData.teamA} className="w-8 h-8 object-cover rounded-full mb-1" />
                       )}
-                      <div className="truncate text-xs">{item.teamA}</div>
+                      <div className="truncate text-xs">{itemData.teamA}</div>
                       <div className="text-xs mt-1">{(prices.teamA * 100).toFixed(1)}%</div>
                       <div className="text-xs mt-0.5 font-semibold">{(priceAmounts.teamA || 0).toFixed(4)} ETH</div>
                     </button>
@@ -1477,12 +1600,12 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           ? 'bg-red-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
-                      title={`${item.teamB} Win`}
+                      title={`${itemData.teamB} Win`}
                     >
-                      {item.teamBImage && (
-                        <img src={item.teamBImage} alt={item.teamB} className="w-8 h-8 object-cover rounded-full mb-1" />
+                      {itemData.teamBImage && (
+                        <img src={itemData.teamBImage} alt={itemData.teamB} className="w-8 h-8 object-cover rounded-full mb-1" />
                       )}
-                      <div className="truncate text-xs">{item.teamB}</div>
+                      <div className="truncate text-xs">{itemData.teamB}</div>
                       <div className="text-xs mt-1">{(prices.teamB * 100).toFixed(1)}%</div>
                       <div className="text-xs mt-0.5 font-semibold">{(priceAmounts.teamB || 0).toFixed(4)} ETH</div>
                     </button>
@@ -1498,10 +1621,53 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                 <div className="flex gap-2">
                   <input
                     type="number"
-                    step="0.01"
+                    step={tradeType === 'buy' ? "0.01" : "0.0001"}
                     min="0"
+                    max={tradeType === 'sell' && selectedOption ? (() => {
+                      // Find the prediction for this option
+                      let optionPrediction = predictions[selectedOption];
+                      if (!optionPrediction) {
+                        optionPrediction = predictions[selectedOption.toUpperCase()] || 
+                                         predictions[selectedOption.toLowerCase()] ||
+                                         predictions[selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1).toLowerCase()];
+                      }
+                      if (!optionPrediction && !isPoll) {
+                        const normalized = selectedOption === 'teamA' ? 'TEAMA' : 
+                                          selectedOption === 'teamB' ? 'TEAMB' : 
+                                          selectedOption === 'draw' ? 'DRAW' : selectedOption.toUpperCase();
+                        optionPrediction = predictions[normalized];
+                      }
+                      return optionPrediction?.shares || 0;
+                    })() : undefined}
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (tradeType === 'sell') {
+                        // Find the prediction for this option
+                        let optionPrediction = predictions[selectedOption];
+                        if (!optionPrediction) {
+                          optionPrediction = predictions[selectedOption.toUpperCase()] || 
+                                           predictions[selectedOption.toLowerCase()] ||
+                                           predictions[selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1).toLowerCase()];
+                        }
+                        if (!optionPrediction && !isPoll) {
+                          const normalized = selectedOption === 'teamA' ? 'TEAMA' : 
+                                            selectedOption === 'teamB' ? 'TEAMB' : 
+                                            selectedOption === 'draw' ? 'DRAW' : selectedOption.toUpperCase();
+                          optionPrediction = predictions[normalized];
+                        }
+                        const maxShares = optionPrediction?.shares || 0;
+                        const inputValue = parseFloat(value);
+                        if (!isNaN(inputValue) && inputValue > maxShares) {
+                          // Don't allow more than max
+                          setAmount(maxShares.toFixed(4));
+                        } else {
+                          setAmount(value);
+                        }
+                      } else {
+                        setAmount(value);
+                      }
+                    }}
                     disabled={locked}
                     className={`flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white ${
                       locked ? 'opacity-50 cursor-not-allowed' : ''
@@ -1509,26 +1675,39 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                     placeholder={tradeType === 'buy' ? "0.0" : "0"}
                   />
                   {tradeType === 'sell' && selectedOption && (() => {
-                  const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
-                  const availableShares = optionPrediction?.shares || 0;
-                  return availableShares > 0 && (
-                    <button
-                      onClick={() => {
-                        if (!locked) {
-                          setAmount('max');
-                        }
-                      }}
-                      disabled={locked}
-                      className={`px-3 py-2 rounded-lg text-sm ${
-                        locked
-                          ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                          : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      Max
-                    </button>
-                  );
-                })()}
+                    // Find the prediction for this option (try multiple variations)
+                    let optionPrediction = predictions[selectedOption];
+                    if (!optionPrediction) {
+                      optionPrediction = predictions[selectedOption.toUpperCase()] || 
+                                       predictions[selectedOption.toLowerCase()] ||
+                                       predictions[selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1).toLowerCase()];
+                    }
+                    // For matches, also try normalized versions
+                    if (!optionPrediction && !isPoll) {
+                      const normalized = selectedOption === 'teamA' ? 'TEAMA' : 
+                                        selectedOption === 'teamB' ? 'TEAMB' : 
+                                        selectedOption === 'draw' ? 'DRAW' : selectedOption.toUpperCase();
+                      optionPrediction = predictions[normalized];
+                    }
+                    const availableShares = optionPrediction?.shares || 0;
+                    return availableShares > 0 && (
+                      <button
+                        onClick={() => {
+                          if (!locked) {
+                            setAmount(availableShares.toFixed(4));
+                          }
+                        }}
+                        disabled={locked}
+                        className={`px-3 py-2 rounded-lg text-sm ${
+                          locked
+                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        Max
+                      </button>
+                    );
+                  })()}
                 </div>
                 {tradeType === 'buy' && selectedOption && amount && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -1536,12 +1715,75 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   </p>
                 )}
                 {tradeType === 'sell' && selectedOption && (() => {
-                  const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
+                  // Find the prediction for this option (try multiple variations)
+                  let optionPrediction = predictions[selectedOption];
+                  if (!optionPrediction) {
+                    optionPrediction = predictions[selectedOption.toUpperCase()] || 
+                                     predictions[selectedOption.toLowerCase()] ||
+                                     predictions[selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1).toLowerCase()];
+                  }
+                  // For matches, also try normalized versions
+                  if (!optionPrediction && !isPoll) {
+                    const normalized = selectedOption === 'teamA' ? 'TEAMA' : 
+                                      selectedOption === 'teamB' ? 'TEAMB' : 
+                                      selectedOption === 'draw' ? 'DRAW' : selectedOption.toUpperCase();
+                    optionPrediction = predictions[normalized];
+                  }
                   const availableShares = optionPrediction?.shares || 0;
+                  
+                  // Calculate equivalent ETH if user entered amount
+                  let equivalentETH = 0;
+                  if (amount && amount !== 'max' && amount !== 'all') {
+                    const sharesToSell = parseFloat(amount);
+                    if (!isNaN(sharesToSell) && sharesToSell > 0 && availableShares > 0) {
+                      // Calculate ETH based on current option liquidity and shares
+                      let optionLiquidity = 0;
+                      let totalSharesForOption = 0;
+                      
+                      if (isPoll) {
+                        if (itemData.optionType === 'options' && itemData.options) {
+                          const selectedOpt = itemData.options.find(opt => opt.text === (optionPrediction?.outcome || selectedOption));
+                          if (selectedOpt) {
+                            optionLiquidity = selectedOpt.liquidity || 0;
+                            totalSharesForOption = selectedOpt.shares || 0;
+                          }
+                        } else {
+                          // Yes/No poll
+                          const normalized = (optionPrediction?.outcome || selectedOption).toUpperCase();
+                          optionLiquidity = normalized === 'YES' ? (itemData.marketYesLiquidity || 0) : (itemData.marketNoLiquidity || 0);
+                          totalSharesForOption = normalized === 'YES' ? (itemData.marketYesShares || 0) : (itemData.marketNoShares || 0);
+                        }
+                      } else {
+                        // Match
+                        const normalized = (optionPrediction?.outcome || selectedOption).toUpperCase();
+                        if (normalized === 'TEAMA') {
+                          optionLiquidity = itemData.marketTeamALiquidity || 0;
+                          totalSharesForOption = itemData.marketTeamAShares || 0;
+                        } else if (normalized === 'TEAMB') {
+                          optionLiquidity = itemData.marketTeamBLiquidity || 0;
+                          totalSharesForOption = itemData.marketTeamBShares || 0;
+                        } else if (normalized === 'DRAW') {
+                          optionLiquidity = itemData.marketDrawLiquidity || 0;
+                          totalSharesForOption = itemData.marketDrawShares || 0;
+                        }
+                      }
+                      
+                      // Estimate ETH: (shares to sell / total shares) * option liquidity
+                      if (totalSharesForOption > 0) {
+                        equivalentETH = (sharesToSell / totalSharesForOption) * optionLiquidity;
+                      }
+                    }
+                  }
+                  
                   return (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Available: {availableShares.toFixed(4)} shares
-                    </p>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-1">
+                      <p>Available: {availableShares.toFixed(4)} shares</p>
+                      {amount && amount !== 'max' && amount !== 'all' && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && (
+                        <p className="font-semibold text-gray-700 dark:text-gray-300">
+                          ≈ {equivalentETH.toFixed(4)} ETH
+                        </p>
+                      )}
+                    </div>
                   );
                 })()}
               </div>
@@ -1556,10 +1798,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   } else {
                     // For sell, check holdings for selected option
                     if (!selectedOption || !amount) return true;
-                    const optionPrediction = predictions[selectedOption] || predictions[selectedOption.toUpperCase()] || predictions[selectedOption.toLowerCase()];
+                    
+                    // Find the prediction for this option (try multiple variations)
+                    let optionPrediction = predictions[selectedOption];
+                    if (!optionPrediction) {
+                      optionPrediction = predictions[selectedOption.toUpperCase()] || 
+                                       predictions[selectedOption.toLowerCase()] ||
+                                       predictions[selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1).toLowerCase()];
+                    }
+                    // For matches, also try normalized versions
+                    if (!optionPrediction && !isPoll) {
+                      const normalized = selectedOption === 'teamA' ? 'TEAMA' : 
+                                        selectedOption === 'teamB' ? 'TEAMB' : 
+                                        selectedOption === 'draw' ? 'DRAW' : selectedOption.toUpperCase();
+                      optionPrediction = predictions[normalized];
+                    }
+                    
                     const availableShares = optionPrediction?.shares || 0;
                     if (availableShares <= 0) return true;
-                    if (amount !== 'max' && amount !== 'all' && parseFloat(amount) > availableShares) return true;
+                    if (amount !== 'max' && amount !== 'all') {
+                      const parsedAmount = parseFloat(amount);
+                      if (isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > availableShares) return true;
+                    }
                     return false;
                   }
                 })()}
@@ -1575,17 +1835,17 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                 {tradeType === 'buy' ? (
                   selectedOption === 'yes' ? 'YES' :
                   selectedOption === 'no' ? 'NO' :
-                  selectedOption === 'teamA' ? item.teamA :
-                  selectedOption === 'teamB' ? item.teamB :
+                  selectedOption === 'teamA' ? itemData.teamA :
+                  selectedOption === 'teamB' ? itemData.teamB :
                   selectedOption === 'draw' ? 'Draw' :
-                  isPoll && item.optionType === 'options' ? selectedOption : ''
+                  isPoll && itemData.optionType === 'options' ? selectedOption : ''
                 ) : (
                   selectedOption === 'yes' ? 'YES' :
                   selectedOption === 'no' ? 'NO' :
-                  selectedOption === 'teamA' ? item.teamA :
-                  selectedOption === 'teamB' ? item.teamB :
+                  selectedOption === 'teamA' ? itemData.teamA :
+                  selectedOption === 'teamB' ? itemData.teamB :
                   selectedOption === 'draw' ? 'Draw' :
-                  isPoll && item.optionType === 'options' ? selectedOption : 'Shares'
+                  isPoll && itemData.optionType === 'options' ? selectedOption : 'Shares'
                 )}
               </button>
 
@@ -1597,9 +1857,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   </h3>
                   <div className="space-y-2 text-sm">
                     {isPoll ? (
-                      item.optionType === 'options' && item.options ? (
+                      itemData.optionType === 'options' && itemData.options ? (
                         // Option-based poll
-                        item.options.map((opt, idx) => {
+                        itemData.options.map((opt, idx) => {
                           const optionPrediction = predictions[opt.text] || {};
                           const shares = optionPrediction.shares || 0;
                           return (
@@ -1626,7 +1886,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                       // Match
                       <>
                         <div className="flex justify-between">
-                          <span className="text-gray-600 dark:text-gray-400">{item.teamA} Shares:</span>
+                          <span className="text-gray-600 dark:text-gray-400">{itemData.teamA} Shares:</span>
                           <span className="font-medium text-gray-900 dark:text-white">{(predictions['TEAMA']?.shares || predictions['TeamA']?.shares || predictions['teamA']?.shares || 0).toFixed(4)}</span>
                         </div>
                         <div className="flex justify-between">
@@ -1634,15 +1894,91 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                           <span className="font-medium text-gray-900 dark:text-white">{(predictions['DRAW']?.shares || predictions['Draw']?.shares || predictions['draw']?.shares || 0).toFixed(4)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600 dark:text-gray-400">{item.teamB} Shares:</span>
+                          <span className="text-gray-600 dark:text-gray-400">{itemData.teamB} Shares:</span>
                           <span className="font-medium text-gray-900 dark:text-white">{(predictions['TEAMB']?.shares || predictions['TeamB']?.shares || predictions['teamB']?.shares || 0).toFixed(4)}</span>
                         </div>
                       </>
                     )}
                     <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-gray-600 dark:text-gray-400">Total Invested:</span>
+                      <span className="text-gray-600 dark:text-gray-400">Total Value:</span>
                       <span className="font-medium text-gray-900 dark:text-white">
-                        {Object.values(predictions).reduce((sum, p) => sum + (p.totalInvested || 0), 0).toFixed(4)} ETH
+                        {(() => {
+                          // Calculate current ETH value of all holdings
+                          let totalValue = 0;
+                          
+                          if (isPoll) {
+                            if (itemData.optionType === 'options' && itemData.options) {
+                              // Option-based poll
+                              itemData.options.forEach(opt => {
+                                const optionPrediction = predictions[opt.text];
+                                if (optionPrediction && optionPrediction.shares > 0) {
+                                  const userShares = optionPrediction.shares || 0;
+                                  const totalSharesForOption = opt.shares || 0;
+                                  const optionLiquidity = opt.liquidity || 0;
+                                  if (totalSharesForOption > 0) {
+                                    totalValue += (userShares / totalSharesForOption) * optionLiquidity;
+                                  }
+                                }
+                              });
+                            } else {
+                              // Normal Yes/No poll
+                              const yesPrediction = predictions['YES'] || predictions['yes'] || {};
+                              const noPrediction = predictions['NO'] || predictions['no'] || {};
+                              
+                              if (yesPrediction.shares > 0) {
+                                const userShares = yesPrediction.shares || 0;
+                                const totalShares = itemData.marketYesShares || 0;
+                                const liquidity = itemData.marketYesLiquidity || 0;
+                                if (totalShares > 0) {
+                                  totalValue += (userShares / totalShares) * liquidity;
+                                }
+                              }
+                              
+                              if (noPrediction.shares > 0) {
+                                const userShares = noPrediction.shares || 0;
+                                const totalShares = itemData.marketNoShares || 0;
+                                const liquidity = itemData.marketNoLiquidity || 0;
+                                if (totalShares > 0) {
+                                  totalValue += (userShares / totalShares) * liquidity;
+                                }
+                              }
+                            }
+                          } else {
+                            // Match
+                            const teamAPrediction = predictions['TEAMA'] || predictions['TeamA'] || predictions['teamA'] || {};
+                            const teamBPrediction = predictions['TEAMB'] || predictions['TeamB'] || predictions['teamB'] || {};
+                            const drawPrediction = predictions['DRAW'] || predictions['Draw'] || predictions['draw'] || {};
+                            
+                            if (teamAPrediction.shares > 0) {
+                              const userShares = teamAPrediction.shares || 0;
+                              const totalShares = itemData.marketTeamAShares || 0;
+                              const liquidity = itemData.marketTeamALiquidity || 0;
+                              if (totalShares > 0) {
+                                totalValue += (userShares / totalShares) * liquidity;
+                              }
+                            }
+                            
+                            if (drawPrediction.shares > 0) {
+                              const userShares = drawPrediction.shares || 0;
+                              const totalShares = itemData.marketDrawShares || 0;
+                              const liquidity = itemData.marketDrawLiquidity || 0;
+                              if (totalShares > 0) {
+                                totalValue += (userShares / totalShares) * liquidity;
+                              }
+                            }
+                            
+                            if (teamBPrediction.shares > 0) {
+                              const userShares = teamBPrediction.shares || 0;
+                              const totalShares = itemData.marketTeamBShares || 0;
+                              const liquidity = itemData.marketTeamBLiquidity || 0;
+                              if (totalShares > 0) {
+                                totalValue += (userShares / totalShares) * liquidity;
+                              }
+                            }
+                          }
+                          
+                          return totalValue.toFixed(4);
+                        })()} ETH
                       </span>
                     </div>
                   </div>
