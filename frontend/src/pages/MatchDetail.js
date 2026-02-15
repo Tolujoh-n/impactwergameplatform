@@ -886,6 +886,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
 
   // Computed value for itemData - always use currentItem if available, fallback to item
   const itemData = currentItem || item;
+  
+  // Check if resolved
+  const isResolved = itemData.isResolved || itemData.status === 'settled' || itemData.status === 'completed';
+  const resolvedOutcome = itemData.result;
+  
+  // Calculate winning predictions
+  const winningPredictions = Object.values(predictions).filter(pred => 
+    pred.status === 'won' || pred.status === 'settled'
+  );
+  const hasWon = winningPredictions.length > 0;
 
   // Update currentItem when item prop changes
   useEffect(() => {
@@ -928,13 +938,6 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     setPrices(calculatedPrices);
     setPriceAmounts(calculatedPriceAmounts);
   }, [currentItem, item, isPoll]);
-
-  const isResolved = item.isResolved;
-  const resolvedOutcome = item.result;
-  
-  // Get winning predictions
-  const winningPredictions = Object.values(predictions).filter(p => p.status === 'won' || p.status === 'settled');
-  const hasWon = winningPredictions.length > 0;
 
   const fetchMarketData = useCallback(async () => {
     try {
@@ -1423,22 +1426,203 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           {/* Sidebar - Trading Panel */}
           <aside className="lg:col-span-1">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 sticky top-24">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Trade
-              </h2>
-
-              {/* Locked Message */}
-              {locked && (
-                <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
-                  <p className="text-sm font-semibold">Trading is locked for this match/poll</p>
-                  {itemData.lockedTime && (
-                    <p className="text-xs mt-1">Locked since: {new Date(itemData.lockedTime).toLocaleString()}</p>
+              {/* Check if resolved */}
+              {itemData.isResolved || itemData.status === 'settled' || itemData.status === 'completed' ? (
+                // Show only Holdings when resolved
+                <>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                    Your Holdings
+                  </h2>
+                  {user && (
+                    <div className="space-y-2 text-sm">
+                      {isPoll ? (
+                        itemData.optionType === 'options' && itemData.options ? (
+                          // Option-based poll
+                          itemData.options.map((opt, idx) => {
+                            const optionPrediction = predictions[opt.text] || {};
+                            const shares = optionPrediction.shares || 0;
+                            return (
+                              <div key={idx} className="flex justify-between">
+                                <span className="text-gray-600 dark:text-gray-400">{opt.text} Shares:</span>
+                                <span className="font-medium text-gray-900 dark:text-white">{shares.toFixed(4)}</span>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          // Normal Yes/No poll
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">YES Shares:</span>
+                              <span className="font-medium text-gray-900 dark:text-white">{(predictions['YES']?.shares || predictions['yes']?.shares || 0).toFixed(4)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">NO Shares:</span>
+                              <span className="font-medium text-gray-900 dark:text-white">{(predictions['NO']?.shares || predictions['no']?.shares || 0).toFixed(4)}</span>
+                            </div>
+                          </>
+                        )
+                      ) : (
+                        // Match
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">{itemData.teamA} Shares:</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{(predictions['TEAMA']?.shares || predictions['TeamA']?.shares || predictions['teamA']?.shares || 0).toFixed(4)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">Draw Shares:</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{(predictions['DRAW']?.shares || predictions['Draw']?.shares || predictions['draw']?.shares || 0).toFixed(4)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">{itemData.teamB} Shares:</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{(predictions['TEAMB']?.shares || predictions['TeamB']?.shares || predictions['teamB']?.shares || 0).toFixed(4)}</span>
+                          </div>
+                        </>
+                      )}
+                      <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <span className="text-gray-600 dark:text-gray-400">Total Value:</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {(() => {
+                            // Calculate current ETH value of all holdings
+                            let totalValue = 0;
+                            
+                            if (isPoll) {
+                              if (itemData.optionType === 'options' && itemData.options) {
+                                // Option-based poll
+                                itemData.options.forEach(opt => {
+                                  const optionPrediction = predictions[opt.text];
+                                  if (optionPrediction && optionPrediction.shares > 0) {
+                                    const userShares = optionPrediction.shares || 0;
+                                    const totalSharesForOption = opt.shares || 0;
+                                    const optionLiquidity = opt.liquidity || 0;
+                                    if (totalSharesForOption > 0) {
+                                      totalValue += (userShares / totalSharesForOption) * optionLiquidity;
+                                    }
+                                  }
+                                });
+                              } else {
+                                // Normal Yes/No poll
+                                const yesPrediction = predictions['YES'] || predictions['yes'] || {};
+                                const noPrediction = predictions['NO'] || predictions['no'] || {};
+                                
+                                if (yesPrediction.shares > 0) {
+                                  const userShares = yesPrediction.shares || 0;
+                                  const totalShares = itemData.marketYesShares || 0;
+                                  const liquidity = itemData.marketYesLiquidity || 0;
+                                  if (totalShares > 0) {
+                                    totalValue += (userShares / totalShares) * liquidity;
+                                  }
+                                }
+                                
+                                if (noPrediction.shares > 0) {
+                                  const userShares = noPrediction.shares || 0;
+                                  const totalShares = itemData.marketNoShares || 0;
+                                  const liquidity = itemData.marketNoLiquidity || 0;
+                                  if (totalShares > 0) {
+                                    totalValue += (userShares / totalShares) * liquidity;
+                                  }
+                                }
+                              }
+                            } else {
+                              // Match
+                              const teamAPrediction = predictions['TEAMA'] || predictions['TeamA'] || predictions['teamA'] || {};
+                              const teamBPrediction = predictions['TEAMB'] || predictions['TeamB'] || predictions['teamB'] || {};
+                              const drawPrediction = predictions['DRAW'] || predictions['Draw'] || predictions['draw'] || {};
+                              
+                              if (teamAPrediction.shares > 0) {
+                                const userShares = teamAPrediction.shares || 0;
+                                const totalShares = itemData.marketTeamAShares || 0;
+                                const liquidity = itemData.marketTeamALiquidity || 0;
+                                if (totalShares > 0) {
+                                  totalValue += (userShares / totalShares) * liquidity;
+                                }
+                              }
+                              
+                              if (drawPrediction.shares > 0) {
+                                const userShares = drawPrediction.shares || 0;
+                                const totalShares = itemData.marketDrawShares || 0;
+                                const liquidity = itemData.marketDrawLiquidity || 0;
+                                if (totalShares > 0) {
+                                  totalValue += (userShares / totalShares) * liquidity;
+                                }
+                              }
+                              
+                              if (teamBPrediction.shares > 0) {
+                                const userShares = teamBPrediction.shares || 0;
+                                const totalShares = itemData.marketTeamBShares || 0;
+                                const liquidity = itemData.marketTeamBLiquidity || 0;
+                                if (totalShares > 0) {
+                                  totalValue += (userShares / totalShares) * liquidity;
+                                }
+                              }
+                            }
+                            
+                            return totalValue.toFixed(4);
+                          })()} ETH
+                        </span>
+                      </div>
+                    </div>
                   )}
-                </div>
-              )}
+                  
+                  {/* Resolved State - Claim buttons */}
+                  {isResolved && (
+                    <div className="mt-4">
+                      {hasWon ? (
+                        winningPredictions.map((pred, idx) => {
+                          if (pred.claimed) {
+                            return (
+                              <div key={idx} className="mb-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Reward claimed</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                  {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
+                                </p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <button
+                              key={idx}
+                              onClick={async () => {
+                                try {
+                                  await api.post(`/predictions/${pred._id}/claim`);
+                                  showNotification('Payout claimed successfully!', 'success');
+                                  fetchUserMarketPrediction();
+                                } catch (error) {
+                                  showNotification(error.response?.data?.message || 'Failed to claim', 'error');
+                                }
+                              }}
+                              className="w-full mb-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                            >
+                              Claim {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                          <p className="text-sm text-gray-600 dark:text-gray-400">You did not win this prediction</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                // Show full trading UI when not resolved
+                <>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                    Trade
+                  </h2>
 
-              {/* Trade Type Toggle */}
-              <div className="flex mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                  {/* Locked Message */}
+                  {locked && (
+                    <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
+                      <p className="text-sm font-semibold">Trading is locked for this match/poll</p>
+                      {itemData.lockedTime && (
+                        <p className="text-xs mt-1">Locked since: {new Date(itemData.lockedTime).toLocaleString()}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Trade Type Toggle */}
+                  <div className="flex mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
                 <button
                   onClick={() => setTradeType('buy')}
                   className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -1849,13 +2033,13 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                 )}
               </button>
 
-              {/* User Holdings */}
-              {user && (
-                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-                    Your Holdings
-                  </h3>
-                  <div className="space-y-2 text-sm">
+                  {/* User Holdings */}
+                  {user && (
+                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                        Your Holdings
+                      </h3>
+                      <div className="space-y-2 text-sm">
                     {isPoll ? (
                       itemData.optionType === 'options' && itemData.options ? (
                         // Option-based poll
@@ -1982,48 +2166,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                       </span>
                     </div>
                   </div>
-                  
-                  {/* Resolved State */}
-                  {isResolved && (
-                    <div className="mt-4">
-                      {hasWon ? (
-                        winningPredictions.map((pred, idx) => {
-                          if (pred.claimed) {
-                            return (
-                              <div key={idx} className="mb-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                                <p className="text-sm text-gray-600 dark:text-gray-400">Reward claimed</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                  {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
-                                </p>
-                              </div>
-                            );
-                          }
-                          return (
-                            <button
-                              key={idx}
-                              onClick={async () => {
-                                try {
-                                  await api.post(`/predictions/${pred._id}/claim`);
-                                  showNotification('Payout claimed successfully!', 'success');
-                                  fetchUserMarketPrediction();
-                                } catch (error) {
-                                  showNotification(error.response?.data?.message || 'Failed to claim', 'error');
-                                }
-                              }}
-                              className="w-full mb-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                            >
-                              Claim {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">You did not win this prediction</p>
-                        </div>
-                      )}
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           </aside>
