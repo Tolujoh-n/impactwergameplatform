@@ -58,7 +58,10 @@ const MatchDetail = () => {
       const predictionData = Array.isArray(response.data) ? response.data[0] : response.data;
       setPrediction(predictionData);
     } catch (error) {
-      // User hasn't predicted yet for this type
+      // User hasn't predicted yet for this type - 404 is expected
+      if (error.response?.status !== 404) {
+        console.error('Error fetching prediction:', error);
+      }
       setPrediction(null);
     }
   }, [isPoll, pollId, matchId, type]);
@@ -108,12 +111,20 @@ const MatchDetail = () => {
           showNotification('Prediction updated successfully!', 'success');
         } else {
           // Create new prediction
-          await api.post('/predictions/free', {
-            [isPoll ? 'pollId' : 'matchId']: itemId,
-            outcome,
-            type: 'free',
-          });
-          showNotification('Free prediction submitted successfully!', 'success');
+          console.log(`[FREE PREDICTION] Attempting to create prediction for ${isPoll ? 'poll' : 'match'}: ${itemId}, outcome: ${outcome}`);
+          try {
+            const response = await api.post('/predictions/free', {
+              [isPoll ? 'pollId' : 'matchId']: itemId,
+              outcome,
+              type: 'free',
+            });
+            console.log('[FREE PREDICTION] Prediction created successfully:', response.data);
+            showNotification('Free prediction submitted successfully!', 'success');
+          } catch (error) {
+            console.error('[FREE PREDICTION] Error creating prediction:', error.response?.data || error.message);
+            showNotification(error.response?.data?.message || 'Failed to create prediction', 'error');
+            throw error; // Re-throw to prevent further execution
+          }
         }
       } else if (type === 'boost') {
         if (canUpdate) {
@@ -345,6 +356,11 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
                   Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
                 </p>
               )}
+              {!isResolved && (
+                <p className="text-gray-600 dark:text-gray-400 mb-2">
+                  Status: Pending
+                </p>
+              )}
               {canPredict && (
                 <button
                   onClick={() => {
@@ -370,7 +386,16 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
                 </button>
               )}
             </div>
-          ) : !isResolved ? (
+          ) : isResolved ? (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 mb-6">
+              <p className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                You did not predict
+              </p>
+              <p className="text-gray-600 dark:text-gray-400">
+                This {isPoll ? 'poll' : 'match'} has been resolved, but you did not make a prediction for it.
+              </p>
+            </div>
+          ) : (
             <div className="space-y-4">
               {getOutcomeOptions().map((option, index) => {
                 const optionText = typeof option === 'string' ? option : option.text;
@@ -391,10 +416,6 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
                   </button>
                 );
               })}
-            </div>
-          ) : (
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
-              <p className="text-gray-600 dark:text-gray-400">This {isPoll ? 'poll' : 'match'} has been resolved. Predictions are closed.</p>
             </div>
           )}
 

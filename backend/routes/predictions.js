@@ -28,8 +28,7 @@ router.get('/user', auth, async (req, res) => {
 router.post('/free', auth, async (req, res) => {
   try {
     const { matchId, pollId, outcome } = req.body;
-    const user = await User.findById(req.user._id);
-
+    
     if (!matchId && !pollId) {
       return res.status(400).json({ message: 'Either matchId or pollId is required' });
     }
@@ -38,20 +37,8 @@ router.post('/free', auth, async (req, res) => {
     const settings = await Settings.findOne({ key: 'dailyFreePlayLimit' });
     const dailyFreePlayLimit = settings && settings.value ? parseInt(settings.value) : 1;
 
-    // Check if user has a ticket
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const lastTicketDate = user.lastTicketDate ? new Date(user.lastTicketDate) : null;
-
-    if (!lastTicketDate || lastTicketDate < today) {
-      // Give new tickets based on daily limit
-      user.tickets = dailyFreePlayLimit;
-      user.lastTicketDate = today;
-    }
-
-    if (user.tickets < 1) {
-      return res.status(400).json({ message: `No tickets available. You can make ${dailyFreePlayLimit} free prediction(s) per day. Come back tomorrow!` });
-    }
+    // Fetch user and check/update tickets
+    const user = await User.findById(req.user._id);
 
     // Check if user already predicted
     const query = {
@@ -63,7 +50,7 @@ router.post('/free', auth, async (req, res) => {
 
     const existingPrediction = await Prediction.findOne(query);
 
-    // If prediction exists and item is still upcoming, allow update
+    // If prediction exists and item is still upcoming, allow update (no ticket needed)
     if (existingPrediction) {
       let item = null;
       if (matchId) {
@@ -73,7 +60,7 @@ router.post('/free', auth, async (req, res) => {
       }
       
       if (item && (item.status === 'upcoming' || item.status === 'active')) {
-        // Update existing prediction
+        // Update existing prediction (no ticket deduction)
         existingPrediction.outcome = outcome;
         existingPrediction.updatedAt = new Date();
         await existingPrediction.save();
@@ -83,8 +70,74 @@ router.post('/free', auth, async (req, res) => {
       return res.status(400).json({ message: 'You already predicted this item' });
     }
 
+    // For new predictions, check tickets
+    // Check if user has a ticket - tickets are shared across all cups per day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    today.setMinutes(0, 0, 0);
+    today.setSeconds(0, 0);
+    today.setMilliseconds(0);
+    
+    // Re-fetch user to get latest data
+    let currentUser = await User.findById(req.user._id);
+    
+    const lastTicketDate = currentUser.lastTicketDate ? new Date(currentUser.lastTicketDate) : null;
+    let lastTicketDateNormalized = null;
+    if (lastTicketDate) {
+      lastTicketDateNormalized = new Date(lastTicketDate);
+      lastTicketDateNormalized.setHours(0, 0, 0, 0);
+      lastTicketDateNormalized.setMinutes(0, 0, 0);
+      lastTicketDateNormalized.setSeconds(0, 0);
+      lastTicketDateNormalized.setMilliseconds(0);
+    }
+
+    // Check if we need to reset tickets
+    const isNewDay = !lastTicketDateNormalized || lastTicketDateNormalized.getTime() < today.getTime();
+    const hasInvalidTickets = currentUser.tickets === null || 
+                              currentUser.tickets === undefined || 
+                              isNaN(currentUser.tickets);
+    // Also reset if tickets are 0 and it's a new day (edge case handling)
+    const hasZeroTickets = currentUser.tickets === 0;
+    const needsReset = isNewDay || hasInvalidTickets || (hasZeroTickets && isNewDay);
+
+    console.log(`[FREE PREDICTION] User ${currentUser._id} - Current tickets: ${currentUser.tickets}, Last ticket date: ${currentUser.lastTicketDate}, Daily limit: ${dailyFreePlayLimit}`);
+    console.log(`[FREE PREDICTION] Is new day: ${isNewDay}, Has invalid tickets: ${hasInvalidTickets}, Has zero tickets: ${hasZeroTickets}, Needs reset: ${needsReset}`);
+    console.log(`[FREE PREDICTION] Today: ${today.toISOString()}, Last date: ${lastTicketDateNormalized ? lastTicketDateNormalized.toISOString() : 'null'}`);
+
+    // Reset tickets if needed
+    if (needsReset) {
+      // Give new tickets based on daily limit
+      currentUser.tickets = dailyFreePlayLimit;
+      currentUser.lastTicketDate = today;
+      await currentUser.save(); // Save immediately to ensure tickets are updated
+      console.log(`[FREE PREDICTION] Tickets reset for user ${currentUser._id}. New tickets: ${dailyFreePlayLimit}`);
+      
+      // Re-fetch to confirm the save
+      currentUser = await User.findById(req.user._id);
+      console.log(`[FREE PREDICTION] After reset - User ${currentUser._id} tickets: ${currentUser.tickets}`);
+    }
+
+    console.log(`[FREE PREDICTION] User ${currentUser._id} - Tickets available: ${currentUser.tickets || 0}, Daily limit: ${dailyFreePlayLimit}`);
+
+    // Final check: if tickets are still 0 or invalid after reset attempt, force reset
+    if ((!currentUser.tickets || currentUser.tickets < 1) && isNewDay) {
+      console.log(`[FREE PREDICTION] Force resetting tickets for user ${currentUser._id} - tickets were ${currentUser.tickets}`);
+      currentUser.tickets = dailyFreePlayLimit;
+      currentUser.lastTicketDate = today;
+      await currentUser.save();
+      currentUser = await User.findById(req.user._id);
+      console.log(`[FREE PREDICTION] After force reset - User ${currentUser._id} tickets: ${currentUser.tickets}`);
+    }
+
+    // Check if user has tickets available
+    const ticketsAvailable = currentUser.tickets && !isNaN(currentUser.tickets) && currentUser.tickets > 0;
+    if (!ticketsAvailable) {
+      console.log(`[FREE PREDICTION] No tickets available for user ${currentUser._id}. Current tickets: ${currentUser.tickets}, Type: ${typeof currentUser.tickets}`);
+      return res.status(400).json({ message: `No tickets available. You can make ${dailyFreePlayLimit} free prediction(s) per day. Come back tomorrow!` });
+    }
+
     const prediction = new Prediction({
-      user: user._id,
+      user: currentUser._id,
       match: matchId,
       poll: pollId,
       type: 'free',
@@ -93,10 +146,12 @@ router.post('/free', auth, async (req, res) => {
 
     await prediction.save();
 
-    // Deduct ticket
-    user.tickets -= 1;
-    user.totalPredictions += 1;
-    await user.save();
+    // Deduct ticket and update user
+    currentUser.tickets -= 1;
+    currentUser.totalPredictions += 1;
+    await currentUser.save();
+
+    console.log(`[FREE PREDICTION] Ticket deducted for user ${currentUser._id}. Remaining tickets: ${currentUser.tickets}`);
 
     res.status(201).json(prediction);
   } catch (error) {
@@ -208,8 +263,9 @@ router.get('/match/:matchId/user', auth, async (req, res) => {
     const prediction = await Prediction.findOne(query)
       .populate('match', 'teamA teamB date status result isResolved');
     
+    // Return null instead of 404 for better frontend handling
     if (!prediction) {
-      return res.status(404).json({ message: 'Prediction not found' });
+      return res.json(null);
     }
     res.json(prediction);
   } catch (error) {
@@ -241,8 +297,9 @@ router.get('/poll/:pollId/user', auth, async (req, res) => {
     const prediction = await Prediction.findOne(query)
       .populate('poll', 'question type status result isResolved');
     
+    // Return null instead of 404 for better frontend handling
     if (!prediction) {
-      return res.status(404).json({ message: 'Prediction not found' });
+      return res.json(null);
     }
     res.json(prediction);
   } catch (error) {
