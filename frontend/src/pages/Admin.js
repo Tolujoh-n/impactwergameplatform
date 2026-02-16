@@ -2749,6 +2749,7 @@ const BlogEditor = ({ value, onChange }) => {
 // Settings Tab Component
 const SettingsTab = () => {
   const [dailyFreePlayLimit, setDailyFreePlayLimit] = useState(1);
+  const [pointsPerWin, setPointsPerWin] = useState(10);
   const [socialLinks, setSocialLinks] = useState({
     socialTwitter: '',
     socialFacebook: '',
@@ -2765,13 +2766,18 @@ const SettingsTab = () => {
 
   const fetchSettings = async () => {
     try {
-      const [freePlayResponse, socialLinksResponse] = await Promise.all([
+      const [freePlayResponse, pointsPerWinResponse, socialLinksResponse] = await Promise.all([
         api.get('/admin/settings/dailyFreePlayLimit'),
+        api.get('/admin/settings/pointsPerWin'),
         api.get('/admin/settings/social-links/all'),
       ]);
       
       if (freePlayResponse.data) {
         setDailyFreePlayLimit(freePlayResponse.data.value || 1);
+      }
+      
+      if (pointsPerWinResponse.data) {
+        setPointsPerWin(pointsPerWinResponse.data.value || 10);
       }
       
       if (socialLinksResponse.data) {
@@ -2794,6 +2800,7 @@ const SettingsTab = () => {
     try {
       await Promise.all([
         api.post('/admin/settings/dailyFreePlayLimit', { value: parseInt(dailyFreePlayLimit) }),
+        api.post('/admin/settings/pointsPerWin', { value: parseInt(pointsPerWin) }),
         api.post('/admin/settings/social-links', socialLinks),
       ]);
       showNotification('Settings saved successfully!', 'success');
@@ -2830,6 +2837,22 @@ const SettingsTab = () => {
                 value={dailyFreePlayLimit}
                 onChange={(e) => setDailyFreePlayLimit(e.target.value)}
                 className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Points per Win
+              </label>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Points awarded to users for each winning prediction
+              </p>
+              <input
+                type="number"
+                min="1"
+                value={pointsPerWin}
+                onChange={(e) => setPointsPerWin(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                placeholder="10"
               />
             </div>
           </div>

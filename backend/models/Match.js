@@ -95,6 +95,20 @@ const matchSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Jackpot pools
+  freeJackpotPool: {
+    type: Number,
+    default: 0,
+  },
+  boostJackpotPool: {
+    type: Number,
+    default: 0,
+  },
+  // Platform fees collected
+  platformFees: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

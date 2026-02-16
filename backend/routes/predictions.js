@@ -9,6 +9,21 @@ const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Helper function to get fees from Settings
+async function getFees() {
+  const getFee = async (key, defaultValue) => {
+    const setting = await Settings.findOne({ key });
+    return setting ? (typeof setting.value === 'number' ? setting.value : parseFloat(setting.value) || defaultValue) : defaultValue;
+  };
+  
+  return {
+    platformFee: await getFee('platformFee', 10),
+    boostJackpotFee: await getFee('boostJackpotFee', 5),
+    marketPlatformFee: await getFee('marketPlatformFee', 5),
+    freeJackpotFee: await getFee('freeJackpotFee', 5),
+  };
+}
+
 // Get all predictions for authenticated user
 router.get('/user', auth, async (req, res) => {
   try {
@@ -207,24 +222,37 @@ router.post('/boost', auth, async (req, res) => {
       return res.status(400).json({ message: 'You already have a boost prediction for this item' });
     }
 
+    // Get fees from settings
+    const fees = await getFees();
+    const stakeAmount = parseFloat(amount);
+    
+    // Calculate fees (percentages)
+    const platformFeeAmount = (stakeAmount * fees.platformFee) / 100;
+    const boostJackpotFeeAmount = (stakeAmount * fees.boostJackpotFee) / 100;
+    const netStakeAmount = stakeAmount - platformFeeAmount - boostJackpotFeeAmount;
+    
     const prediction = new Prediction({
       user: req.user._id,
       match: matchId,
       poll: pollId,
       type: 'boost',
       outcome,
-      amount,
-      totalStake: amount, // Initialize total stake
+      amount: netStakeAmount, // Store net amount after fees
+      totalStake: netStakeAmount, // Initialize total stake (net)
     });
 
     await prediction.save();
 
-    // Update boost pool
+    // Update boost pool with net amount (after fees)
     if (matchId) {
-      item.boostPool += amount;
+      item.boostPool = (item.boostPool || 0) + netStakeAmount;
+      item.boostJackpotPool = (item.boostJackpotPool || 0) + boostJackpotFeeAmount;
+      item.platformFees = (item.platformFees || 0) + platformFeeAmount;
       await item.save();
     } else {
-      item.boostPool = (item.boostPool || 0) + amount;
+      item.boostPool = (item.boostPool || 0) + netStakeAmount;
+      item.boostJackpotPool = (item.boostJackpotPool || 0) + boostJackpotFeeAmount;
+      item.platformFees = (item.platformFees || 0) + platformFeeAmount;
       await item.save();
     }
 
@@ -391,15 +419,27 @@ router.post('/boost/:predictionId/stake', auth, async (req, res) => {
     
     const stakeAmount = parseFloat(amount);
     
+    // Get fees from settings
+    const fees = await getFees();
+    
     if (action === 'add') {
-      prediction.totalStake = (prediction.totalStake || prediction.amount || 0) + stakeAmount;
+      // Calculate fees for adding stake
+      const platformFeeAmount = (stakeAmount * fees.platformFee) / 100;
+      const boostJackpotFeeAmount = (stakeAmount * fees.boostJackpotFee) / 100;
+      const netStakeAmount = stakeAmount - platformFeeAmount - boostJackpotFeeAmount;
+      
+      prediction.totalStake = (prediction.totalStake || prediction.amount || 0) + netStakeAmount;
       prediction.amount = prediction.totalStake;
       
-      // Update boost pool
+      // Update boost pool with net amount and fees
       if (prediction.match) {
-        item.boostPool = (item.boostPool || 0) + stakeAmount;
+        item.boostPool = (item.boostPool || 0) + netStakeAmount;
+        item.boostJackpotPool = (item.boostJackpotPool || 0) + boostJackpotFeeAmount;
+        item.platformFees = (item.platformFees || 0) + platformFeeAmount;
       } else {
-        item.boostPool = (item.boostPool || 0) + stakeAmount;
+        item.boostPool = (item.boostPool || 0) + netStakeAmount;
+        item.boostJackpotPool = (item.boostJackpotPool || 0) + boostJackpotFeeAmount;
+        item.platformFees = (item.platformFees || 0) + platformFeeAmount;
       }
     } else if (action === 'withdraw') {
       const currentStake = prediction.totalStake || prediction.amount || 0;
@@ -407,10 +447,11 @@ router.post('/boost/:predictionId/stake', auth, async (req, res) => {
         return res.status(400).json({ message: 'Cannot withdraw more than current stake' });
       }
       
+      // For withdrawal, reduce from net stake (no fees on withdrawal)
       prediction.totalStake = currentStake - stakeAmount;
       prediction.amount = prediction.totalStake;
       
-      // Update boost pool
+      // Update boost pool (reduce net amount)
       if (prediction.match) {
         item.boostPool = Math.max(0, (item.boostPool || 0) - stakeAmount);
       } else {
@@ -477,9 +518,19 @@ router.post('/market/buy', auth, async (req, res) => {
     }
     
     const investAmount = parseFloat(amount);
+    
+    // Get fees from settings
+    const fees = await getFees();
+    
+    // Calculate fees for market buy
+    const marketPlatformFeeAmount = (investAmount * fees.marketPlatformFee) / 100;
+    const freeJackpotFeeAmount = (investAmount * fees.freeJackpotFee) / 100;
+    const netInvestAmount = investAmount - marketPlatformFeeAmount - freeJackpotFeeAmount;
+    
     let normalizedOutcome = outcome;
     
     // Calculate shares based on current liquidity (simplified AMM)
+    // Use net amount for liquidity calculation
     let shares = 0;
     let totalLiquidity = 0;
     let optionLiquidity = 0;
@@ -523,7 +574,8 @@ router.post('/market/buy', auth, async (req, res) => {
     }
     
     // Calculate shares using constant product formula (simplified)
-    shares = (investAmount * optionLiquidity) / (totalLiquidity + investAmount);
+    // Use net amount for share calculation
+    shares = (netInvestAmount * optionLiquidity) / (totalLiquidity + netInvestAmount);
     
     // Calculate current price for this option
     const currentPrice = totalLiquidity > 0 ? (optionLiquidity / totalLiquidity) : 0;
@@ -542,7 +594,7 @@ router.post('/market/buy', auth, async (req, res) => {
     if (prediction) {
       // Update existing prediction for this option
       prediction.shares = (prediction.shares || 0) + shares;
-      prediction.totalInvested = (prediction.totalInvested || 0) + investAmount;
+      prediction.totalInvested = (prediction.totalInvested || 0) + netInvestAmount;
     } else {
       // Create new prediction for this option
       prediction = new Prediction({
@@ -552,54 +604,60 @@ router.post('/market/buy', auth, async (req, res) => {
         type: 'market',
         outcome: normalizedOutcome,
         shares: shares,
-        totalInvested: investAmount,
+        totalInvested: netInvestAmount,
       });
     }
     
-    // Create trade record for this buy transaction
+    // Create trade record for this buy transaction (store net amount)
     const trade = new Trade({
       user: req.user._id,
       match: matchId,
       poll: pollId,
       type: 'buy',
       outcome: normalizedOutcome,
-      amount: investAmount,
+      amount: netInvestAmount,
       shares: shares,
       price: currentPrice,
     });
     await trade.save();
     
-    // Update market liquidity
+    // Update market liquidity with net amount and fees
     if (matchId) {
       if (normalizedOutcome === 'TEAMA') {
-        item.marketTeamALiquidity = (item.marketTeamALiquidity || 0) + investAmount;
+        item.marketTeamALiquidity = (item.marketTeamALiquidity || 0) + netInvestAmount;
         item.marketTeamAShares = (item.marketTeamAShares || 0) + shares;
       } else if (normalizedOutcome === 'TEAMB') {
-        item.marketTeamBLiquidity = (item.marketTeamBLiquidity || 0) + investAmount;
+        item.marketTeamBLiquidity = (item.marketTeamBLiquidity || 0) + netInvestAmount;
         item.marketTeamBShares = (item.marketTeamBShares || 0) + shares;
       } else if (normalizedOutcome === 'DRAW') {
-        item.marketDrawLiquidity = (item.marketDrawLiquidity || 0) + investAmount;
+        item.marketDrawLiquidity = (item.marketDrawLiquidity || 0) + netInvestAmount;
         item.marketDrawShares = (item.marketDrawShares || 0) + shares;
       }
+      // Update fees and jackpot pools
+      item.freeJackpotPool = (item.freeJackpotPool || 0) + freeJackpotFeeAmount;
+      item.platformFees = (item.platformFees || 0) + marketPlatformFeeAmount;
     } else {
       // Handle poll
       if (item.optionType === 'options') {
         // Update the specific option
         const selectedOption = item.options.find(opt => opt.text === outcome);
         if (selectedOption) {
-          selectedOption.liquidity = (selectedOption.liquidity || 0) + investAmount;
+          selectedOption.liquidity = (selectedOption.liquidity || 0) + netInvestAmount;
           selectedOption.shares = (selectedOption.shares || 0) + shares;
         }
       } else {
         // Normal Yes/No poll
         if (normalizedOutcome === 'YES') {
-          item.marketYesLiquidity = (item.marketYesLiquidity || 0) + investAmount;
+          item.marketYesLiquidity = (item.marketYesLiquidity || 0) + netInvestAmount;
           item.marketYesShares = (item.marketYesShares || 0) + shares;
         } else if (normalizedOutcome === 'NO') {
-          item.marketNoLiquidity = (item.marketNoLiquidity || 0) + investAmount;
+          item.marketNoLiquidity = (item.marketNoLiquidity || 0) + netInvestAmount;
           item.marketNoShares = (item.marketNoShares || 0) + shares;
         }
       }
+      // Update fees and jackpot pools for polls
+      item.freeJackpotPool = (item.freeJackpotPool || 0) + freeJackpotFeeAmount;
+      item.platformFees = (item.platformFees || 0) + marketPlatformFeeAmount;
     }
     
     prediction.updatedAt = new Date();

@@ -3,6 +3,7 @@ const { auth } = require('../middleware/auth');
 const User = require('../models/User');
 const Prediction = require('../models/Prediction');
 const Match = require('../models/Match');
+const Poll = require('../models/Poll');
 const Cup = require('../models/Cup');
 
 const router = express.Router();
@@ -12,16 +13,15 @@ router.get('/', async (req, res) => {
   try {
     const { type } = req.query;
     
-    // Calculate jackpot pools from fees
-    const boostPredictions = await Prediction.find({ type: 'boost' });
-    const marketPredictions = await Prediction.find({ type: 'market' });
+    // Calculate jackpot pools from actual match/poll pools
+    const matches = await Match.find({});
+    const polls = await Poll.find({});
     
-    const boostPool = boostPredictions.length > 0 
-      ? boostPredictions.reduce((sum, p) => sum + ((p.amount || 0) * 0.1), 0)
-      : 10.0; // Default minimum pool
-    const freePool = marketPredictions.length > 0
-      ? marketPredictions.reduce((sum, p) => sum + ((p.amount || 0) * 0.05), 0)
-      : 500; // Default minimum pool in points
+    // Sum up all free and boost jackpot pools
+    const freePool = matches.reduce((sum, m) => sum + (m.freeJackpotPool || 0), 0) +
+                     polls.reduce((sum, p) => sum + (p.freeJackpotPool || 0), 0);
+    const boostPool = matches.reduce((sum, m) => sum + (m.boostJackpotPool || 0), 0) +
+                      polls.reduce((sum, p) => sum + (p.boostJackpotPool || 0), 0);
     
     const jackpots = [
       {
@@ -108,20 +108,15 @@ router.get('/cup/:cupSlug', async (req, res) => {
       return res.status(404).json({ message: 'Cup not found' });
     }
     
+    // Get actual jackpot pools from matches and polls in this cup
     const matches = await Match.find({ cup: cup._id });
+    const polls = await Poll.find({ cup: cup._id });
     const matchIds = matches.map(m => m._id);
     
-    const boostPredictions = await Prediction.find({ 
-      type: 'boost',
-      match: { $in: matchIds }
-    });
-    const marketPredictions = await Prediction.find({ 
-      type: 'market',
-      match: { $in: matchIds }
-    });
-    
-    const boostPool = boostPredictions.reduce((sum, p) => sum + (p.amount * 0.1), 0);
-    const freePool = marketPredictions.reduce((sum, p) => sum + (p.amount * 0.05), 0);
+    const boostPool = matches.reduce((sum, m) => sum + (m.boostJackpotPool || 0), 0) +
+                      polls.reduce((sum, p) => sum + (p.boostJackpotPool || 0), 0);
+    const freePool = matches.reduce((sum, m) => sum + (m.freeJackpotPool || 0), 0) +
+                     polls.reduce((sum, p) => sum + (p.freeJackpotPool || 0), 0);
     
     const jackpots = [
       {
@@ -217,5 +212,54 @@ async function getMatchIds(cupId) {
   const matches = await Match.find({ cup: cupId });
   return matches.map(m => m._id);
 }
+
+// Get user jackpot stats
+router.get('/user/stats', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    res.json({
+      jackpotBalance: user.jackpotBalance || 0,
+      jackpotWithdrawn: user.jackpotWithdrawn || 0,
+      jackpotWins: user.jackpotWins || 0,
+      totalEarned: (user.jackpotBalance || 0) + (user.jackpotWithdrawn || 0),
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Withdraw jackpot
+router.post('/withdraw', auth, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const user = await User.findById(req.user._id);
+    
+    if (!amount || parseFloat(amount) <= 0) {
+      return res.status(400).json({ message: 'Invalid amount' });
+    }
+    
+    const withdrawAmount = parseFloat(amount);
+    const currentBalance = user.jackpotBalance || 0;
+    
+    if (withdrawAmount > currentBalance) {
+      return res.status(400).json({ message: 'Insufficient jackpot balance' });
+    }
+    
+    // Update user balance
+    user.jackpotBalance = currentBalance - withdrawAmount;
+    user.jackpotWithdrawn = (user.jackpotWithdrawn || 0) + withdrawAmount;
+    await user.save();
+    
+    // In real implementation, transfer ETH here
+    res.json({ 
+      message: 'Withdrawal successful', 
+      withdrawn: withdrawAmount,
+      remainingBalance: user.jackpotBalance,
+      totalWithdrawn: user.jackpotWithdrawn,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 module.exports = router;

@@ -10,6 +10,14 @@ const Jackpot = () => {
   const [jackpots, setJackpots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, free, boost
+  const [userStats, setUserStats] = useState({
+    jackpotBalance: 0,
+    jackpotWithdrawn: 0,
+    jackpotWins: 0,
+    totalEarned: 0,
+  });
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
 
   const fetchJackpots = useCallback(async () => {
     setLoading(true);
@@ -27,9 +35,68 @@ const Jackpot = () => {
     }
   }, [cupSlug, filter]);
 
+  const fetchUserStats = useCallback(async () => {
+    if (!user) {
+      // Set default stats for non-logged in users
+      setUserStats({
+        jackpotBalance: 0,
+        jackpotWithdrawn: 0,
+        jackpotWins: 0,
+        totalEarned: 0,
+      });
+      return;
+    }
+    try {
+      const response = await api.get('/api/jackpots/user/stats');
+      setUserStats(response.data || {
+        jackpotBalance: 0,
+        jackpotWithdrawn: 0,
+        jackpotWins: 0,
+        totalEarned: 0,
+      });
+    } catch (error) {
+      console.error('Error fetching user stats:', error);
+      // Set default stats on error
+      setUserStats({
+        jackpotBalance: 0,
+        jackpotWithdrawn: 0,
+        jackpotWins: 0,
+        totalEarned: 0,
+      });
+    }
+  }, [user]);
+
+  const handleWithdraw = async () => {
+    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    
+    if (parseFloat(withdrawAmount) > (userStats?.jackpotBalance || 0)) {
+      alert('Insufficient balance');
+      return;
+    }
+
+    setWithdrawing(true);
+    try {
+      const response = await api.post('/api/jackpots/withdraw', { amount: withdrawAmount });
+      alert('Withdrawal successful!');
+      setWithdrawAmount('');
+      await fetchUserStats();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Withdrawal failed');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   useEffect(() => {
     fetchJackpots();
   }, [cupSlug, filter, fetchJackpots]);
+
+  useEffect(() => {
+    fetchUserStats();
+  }, [user, fetchUserStats]);
 
   if (loading) {
     return (
@@ -50,6 +117,62 @@ const Jackpot = () => {
             Compete for daily, stage, and tournament jackpots
           </p>
         </div>
+
+        {/* User Jackpot Stats */}
+        {user && (
+          <div className="mb-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg shadow-lg p-6 text-white">
+            <h2 className="text-2xl font-bold mb-4">Your Jackpot Stats</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <div className="text-sm opacity-90">Available Balance</div>
+                <div className="text-2xl font-bold">{(userStats?.jackpotBalance || 0).toFixed(4)} ETH</div>
+              </div>
+              <div>
+                <div className="text-sm opacity-90">Total Withdrawn</div>
+                <div className="text-2xl font-bold">{(userStats?.jackpotWithdrawn || 0).toFixed(4)} ETH</div>
+              </div>
+              <div>
+                <div className="text-sm opacity-90">Total Earned</div>
+                <div className="text-2xl font-bold">{(userStats?.totalEarned || 0).toFixed(4)} ETH</div>
+              </div>
+              <div>
+                <div className="text-sm opacity-90">Jackpot Wins</div>
+                <div className="text-2xl font-bold">{userStats?.jackpotWins || 0}</div>
+              </div>
+            </div>
+            
+            {/* Withdrawal Section */}
+            {(userStats?.jackpotBalance || 0) > 0 && (
+              <div className="mt-4 pt-4 border-t border-white/20">
+                <h3 className="text-lg font-semibold mb-3">Withdraw Jackpot</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder="Amount to withdraw"
+                    max={userStats?.jackpotBalance || 0}
+                    step="0.0001"
+                    className="flex-1 px-4 py-2 rounded-lg text-gray-900"
+                  />
+                  <button
+                    onClick={() => setWithdrawAmount((userStats?.jackpotBalance || 0).toString())}
+                    className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                  >
+                    Max
+                  </button>
+                  <button
+                    onClick={handleWithdraw}
+                    disabled={withdrawing || !withdrawAmount}
+                    className="px-6 py-2 bg-white text-purple-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {withdrawing ? 'Withdrawing...' : 'Withdraw'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="mb-6 flex space-x-4">

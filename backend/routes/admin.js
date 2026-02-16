@@ -442,9 +442,22 @@ router.post('/matches/:id/resolve', async (req, res) => {
     
     // First pass: determine win/loss status and collect predictions (don't save yet)
     for (const prediction of predictions) {
-      // Normalize outcome for comparison
-      const normalizedOutcome = prediction.outcome.charAt(0).toUpperCase() + prediction.outcome.slice(1).toLowerCase();
-      const normalizedPredictionOutcome = normalizedOutcome === 'Teama' ? 'TeamA' : (normalizedOutcome === 'Teamb' ? 'TeamB' : normalizedOutcome);
+      // Normalize outcome for comparison - handle both team names and normalized values
+      let normalizedPredictionOutcome = '';
+      const predictionOutcome = (prediction.outcome || '').trim();
+      
+      // Check if prediction outcome matches team names directly
+      if (predictionOutcome === match.teamA || predictionOutcome.toLowerCase() === match.teamA.toLowerCase()) {
+        normalizedPredictionOutcome = 'TeamA';
+      } else if (predictionOutcome === match.teamB || predictionOutcome.toLowerCase() === match.teamB.toLowerCase()) {
+        normalizedPredictionOutcome = 'TeamB';
+      } else if (predictionOutcome.toLowerCase() === 'draw') {
+        normalizedPredictionOutcome = 'Draw';
+      } else {
+        // Try to normalize the outcome string
+        const normalizedOutcome = predictionOutcome.charAt(0).toUpperCase() + predictionOutcome.slice(1).toLowerCase();
+        normalizedPredictionOutcome = normalizedOutcome === 'Teama' ? 'TeamA' : (normalizedOutcome === 'Teamb' ? 'TeamB' : normalizedOutcome);
+      }
       
       if (normalizedPredictionOutcome === normalizedResult) {
         prediction.status = 'won';
@@ -540,6 +553,62 @@ router.post('/matches/:id/resolve', async (req, res) => {
         }
       }
     }
+
+    // Distribute jackpots to winners
+    // Free jackpot: distribute to winning free predictions
+    const freeWinningPredictions = predictions.filter(p => p.type === 'free' && p.status === 'won');
+    if (freeWinningPredictions.length > 0 && match.freeJackpotPool > 0) {
+      const jackpotPerWinner = match.freeJackpotPool / freeWinningPredictions.length;
+      const userIds = [...new Set(freeWinningPredictions.map(p => p.user.toString()))];
+      
+      for (const userId of userIds) {
+        const user = await User.findById(userId);
+        if (user) {
+          user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
+          user.jackpotWins = (user.jackpotWins || 0) + 1;
+          await user.save();
+        }
+      }
+      // Reset jackpot pool after distribution
+      match.freeJackpotPool = 0;
+    }
+    
+    // Boost jackpot: distribute to winning boost predictions
+    const boostWinningPredictions = boostPredictions.filter(p => p.status === 'won');
+    if (boostWinningPredictions.length > 0 && match.boostJackpotPool > 0) {
+      const jackpotPerWinner = match.boostJackpotPool / boostWinningPredictions.length;
+      const userIds = [...new Set(boostWinningPredictions.map(p => p.user.toString()))];
+      
+      for (const userId of userIds) {
+        const user = await User.findById(userId);
+        if (user) {
+          user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
+          user.jackpotWins = (user.jackpotWins || 0) + 1;
+          await user.save();
+        }
+      }
+      // Reset jackpot pool after distribution
+      match.boostJackpotPool = 0;
+    }
+    
+    // Award points to winning free predictions
+    const freeWinningPredictionsForPoints = predictions.filter(p => p.type === 'free' && p.status === 'won');
+    if (freeWinningPredictionsForPoints.length > 0) {
+      const pointsPerWinSetting = await Settings.findOne({ key: 'pointsPerWin' });
+      const pointsPerWin = pointsPerWinSetting ? (typeof pointsPerWinSetting.value === 'number' ? pointsPerWinSetting.value : parseFloat(pointsPerWinSetting.value) || 10) : 10;
+      
+      const userIds = [...new Set(freeWinningPredictionsForPoints.map(p => p.user.toString()))];
+      for (const userId of userIds) {
+        const user = await User.findById(userId);
+        if (user) {
+          const userWins = freeWinningPredictionsForPoints.filter(p => p.user.toString() === userId).length;
+          user.points = (user.points || 0) + (userWins * pointsPerWin);
+          await user.save();
+        }
+      }
+    }
+
+    await match.save();
 
     res.json(match);
   } catch (error) {
@@ -867,6 +936,62 @@ router.post('/polls/:id/resolve', async (req, res) => {
       }
     }
 
+    // Distribute jackpots to winners
+    // Free jackpot: distribute to winning free predictions
+    const freeWinningPredictions = predictions.filter(p => p.type === 'free' && p.status === 'won');
+    if (freeWinningPredictions.length > 0 && poll.freeJackpotPool > 0) {
+      const jackpotPerWinner = poll.freeJackpotPool / freeWinningPredictions.length;
+      const userIds = [...new Set(freeWinningPredictions.map(p => p.user.toString()))];
+      
+      for (const userId of userIds) {
+        const user = await User.findById(userId);
+        if (user) {
+          user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
+          user.jackpotWins = (user.jackpotWins || 0) + 1;
+          await user.save();
+        }
+      }
+      // Reset jackpot pool after distribution
+      poll.freeJackpotPool = 0;
+    }
+    
+    // Boost jackpot: distribute to winning boost predictions
+    const boostWinningPredictions = boostPredictions.filter(p => p.status === 'won');
+    if (boostWinningPredictions.length > 0 && poll.boostJackpotPool > 0) {
+      const jackpotPerWinner = poll.boostJackpotPool / boostWinningPredictions.length;
+      const userIds = [...new Set(boostWinningPredictions.map(p => p.user.toString()))];
+      
+      for (const userId of userIds) {
+        const user = await User.findById(userId);
+        if (user) {
+          user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
+          user.jackpotWins = (user.jackpotWins || 0) + 1;
+          await user.save();
+        }
+      }
+      // Reset jackpot pool after distribution
+      poll.boostJackpotPool = 0;
+    }
+
+    // Award points to winning free predictions
+    const freeWinningPredictionsForPoints = predictions.filter(p => p.type === 'free' && p.status === 'won');
+    if (freeWinningPredictionsForPoints.length > 0) {
+      const pointsPerWinSetting = await Settings.findOne({ key: 'pointsPerWin' });
+      const pointsPerWin = pointsPerWinSetting ? (typeof pointsPerWinSetting.value === 'number' ? pointsPerWinSetting.value : parseFloat(pointsPerWinSetting.value) || 10) : 10;
+      
+      const userIds = [...new Set(freeWinningPredictionsForPoints.map(p => p.user.toString()))];
+      for (const userId of userIds) {
+        const user = await User.findById(userId);
+        if (user) {
+          const userWins = freeWinningPredictionsForPoints.filter(p => p.user.toString() === userId).length;
+          user.points = (user.points || 0) + (userWins * pointsPerWin);
+          await user.save();
+        }
+      }
+    }
+    
+    await poll.save();
+
     res.json(poll);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1057,6 +1182,7 @@ router.get('/settings/:key', async (req, res) => {
       // Return default value
       const defaults = {
         dailyFreePlayLimit: 1,
+        pointsPerWin: 10,
       };
       return res.json({ key: req.params.key, value: defaults[req.params.key] || null });
     }
@@ -1071,14 +1197,22 @@ router.post('/settings/:key', async (req, res) => {
     const { value } = req.body;
     let setting = await Settings.findOne({ key: req.params.key });
     
+    const descriptions = {
+      dailyFreePlayLimit: 'Number of free predictions per day',
+      pointsPerWin: 'Points awarded per winning prediction',
+    };
+    
     if (setting) {
       setting.value = value;
+      if (descriptions[req.params.key]) {
+        setting.description = descriptions[req.params.key];
+      }
       await setting.save();
     } else {
       setting = new Settings({
         key: req.params.key,
         value,
-        description: req.params.key === 'dailyFreePlayLimit' ? 'Number of free predictions per day' : '',
+        description: descriptions[req.params.key] || '',
       });
       await setting.save();
     }

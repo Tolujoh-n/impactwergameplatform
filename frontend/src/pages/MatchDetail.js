@@ -237,7 +237,21 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
   const [selectedOutcome, setSelectedOutcome] = useState(null);
   
   const isResolved = item.isResolved;
-  const resolvedOutcome = item.result;
+  // Map result to display name: TeamA -> teamA name, TeamB -> teamB name, Draw -> Draw
+  const getDisplayResult = () => {
+    if (!item.result) return '';
+    const result = item.result.trim();
+    if (result === 'TeamA' || result.toLowerCase() === 'teama') {
+      return item.teamA || 'Team A';
+    } else if (result === 'TeamB' || result.toLowerCase() === 'teamb') {
+      return item.teamB || 'Team B';
+    } else if (result === 'Draw' || result.toLowerCase() === 'draw') {
+      return 'Draw';
+    }
+    // If result is already a team name, return it as is
+    return result;
+  };
+  const resolvedOutcome = getDisplayResult();
   const hasWon = prediction && prediction.status === 'won';
   const canPredict = !locked && !isResolved && (item.status === 'upcoming' || item.status === 'active');
   
@@ -325,6 +339,22 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
           <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
             {isPoll ? item.description : `${new Date(item.date).toLocaleDateString()} • ${item.stageName || ''}`}
           </p>
+
+          {/* Jackpot Pools Display */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+              <div className="text-sm text-green-600 dark:text-green-400 font-semibold mb-1">Free Jackpot Pool</div>
+              <div className="text-xl font-bold text-green-700 dark:text-green-300">
+                {(item.freeJackpotPool || 0).toFixed(4)} ETH
+              </div>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+              <div className="text-sm text-blue-600 dark:text-blue-400 font-semibold mb-1">Boost Jackpot Pool</div>
+              <div className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                {(item.boostJackpotPool || 0).toFixed(4)} ETH
+              </div>
+            </div>
+          </div>
 
           {isResolved && (
             <div className="bg-blue-50 dark:bg-blue-900 rounded-lg p-6 mb-6">
@@ -477,10 +507,38 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   const [amount, setAmount] = useState('');
   const [stakeAction, setStakeAction] = useState('add'); // 'add' or 'withdraw'
   const [stakeAmount, setStakeAmount] = useState('');
+  const [fees, setFees] = useState({ platformFee: 10, boostJackpotFee: 10 });
   const { showNotification } = useNotification();
   
+  // Fetch fees on mount
+  useEffect(() => {
+    const fetchFees = async () => {
+      try {
+        const response = await api.get('/superadmin/get-fees');
+        setFees(response.data);
+      } catch (error) {
+        console.error('Error fetching fees:', error);
+      }
+    };
+    fetchFees();
+  }, []);
+  
   const isResolved = item.isResolved;
-  const resolvedOutcome = item.result;
+  // Map result to display name: TeamA -> teamA name, TeamB -> teamB name, Draw -> Draw
+  const getDisplayResult = () => {
+    if (!item.result) return '';
+    const result = item.result.trim();
+    if (result === 'TeamA' || result.toLowerCase() === 'teama') {
+      return item.teamA || 'Team A';
+    } else if (result === 'TeamB' || result.toLowerCase() === 'teamb') {
+      return item.teamB || 'Team B';
+    } else if (result === 'Draw' || result.toLowerCase() === 'draw') {
+      return 'Draw';
+    }
+    // If result is already a team name, return it as is
+    return result;
+  };
+  const resolvedOutcome = getDisplayResult();
   // Check if won: status is 'won' OR (status is 'settled' and payout > 0) OR (payout > 0 and status is not 'lost')
   const hasWon = prediction && (
     prediction.status === 'won' || 
@@ -574,6 +632,22 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
             {isPoll ? item.description : `${new Date(item.date).toLocaleDateString()} • ${item.stageName || ''}`}
           </p>
 
+          {/* Jackpot Pools Display */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+              <div className="text-sm text-green-600 dark:text-green-400 font-semibold mb-1">Free Jackpot Pool</div>
+              <div className="text-xl font-bold text-green-700 dark:text-green-300">
+                {(item.freeJackpotPool || 0).toFixed(4)} ETH
+              </div>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+              <div className="text-sm text-blue-600 dark:text-blue-400 font-semibold mb-1">Boost Jackpot Pool</div>
+              <div className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                {(item.boostJackpotPool || 0).toFixed(4)} ETH
+              </div>
+            </div>
+          </div>
+
           {isResolved && (
             <div className="bg-blue-50 dark:bg-blue-900 rounded-lg p-6 mb-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
@@ -593,7 +667,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
               Stake ETH to enter the prize pool. Winners split the pool proportionally.
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              10% platform fee • 10% boost jackpot fee • Game locks at kickoff
+              {fees.platformFee || 10}% platform fee • {fees.boostJackpotFee || 10}% boost jackpot fee • Game locks at kickoff
             </p>
           </div>
 
@@ -807,7 +881,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                   </div>
                 )}
                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                  <p>10% platform fee • 10% boost jackpot fee</p>
+                  <p>{fees.platformFee || 10}% platform fee • {fees.boostJackpotFee || 10}% boost jackpot fee</p>
                   <p>Game locks at kickoff</p>
                 </div>
                 <div className="flex space-x-2">
@@ -935,7 +1009,21 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
   
   // Check if resolved
   const isResolved = itemData.isResolved || itemData.status === 'settled' || itemData.status === 'completed';
-  const resolvedOutcome = itemData.result;
+  // Map result to display name: TeamA -> teamA name, TeamB -> teamB name, Draw -> Draw
+  const getDisplayResult = () => {
+    if (!itemData.result) return '';
+    const result = itemData.result.trim();
+    if (result === 'TeamA' || result.toLowerCase() === 'teama') {
+      return itemData.teamA || 'Team A';
+    } else if (result === 'TeamB' || result.toLowerCase() === 'teamb') {
+      return itemData.teamB || 'Team B';
+    } else if (result === 'Draw' || result.toLowerCase() === 'draw') {
+      return 'Draw';
+    }
+    // If result is already a team name, return it as is
+    return result;
+  };
+  const resolvedOutcome = getDisplayResult();
   
   // Calculate winning predictions
   const winningPredictions = Object.values(predictions).filter(pred => 
@@ -1240,6 +1328,21 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
               </p>
             </div>
           )}
+          {/* Jackpot Pools Display */}
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+              <div className="text-sm text-green-600 dark:text-green-400 font-semibold mb-1">Free Jackpot Pool</div>
+              <div className="text-xl font-bold text-green-700 dark:text-green-300">
+                {(itemData.freeJackpotPool || 0).toFixed(4)} ETH
+              </div>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+              <div className="text-sm text-blue-600 dark:text-blue-400 font-semibold mb-1">Boost Jackpot Pool</div>
+              <div className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                {(itemData.boostJackpotPool || 0).toFixed(4)} ETH
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

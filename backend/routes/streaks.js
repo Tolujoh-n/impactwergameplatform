@@ -3,6 +3,7 @@ const { auth } = require('../middleware/auth');
 const User = require('../models/User');
 const Prediction = require('../models/Prediction');
 const Match = require('../models/Match');
+const Poll = require('../models/Poll');
 const Cup = require('../models/Cup');
 
 const router = express.Router();
@@ -34,10 +35,15 @@ router.get('/cup/:cupSlug', async (req, res) => {
     }
     
     const matches = await Match.find({ cup: cup._id });
+    const polls = await Poll.find({ cup: cup._id });
     const matchIds = matches.map(m => m._id);
+    const pollIds = polls.map(p => p._id);
     
     const predictions = await Prediction.find({ 
-      match: { $in: matchIds },
+      $or: [
+        { match: { $in: matchIds } },
+        { poll: { $in: pollIds } }
+      ],
       type: 'free',
       status: 'won'
     }).sort({ createdAt: 1 });
@@ -73,23 +79,40 @@ router.get('/user', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     
-    // Get recent predictions to calculate streak
-    const predictions = await Prediction.find({ 
+    // Get recent predictions to calculate streak (consecutive wins)
+    const allPredictions = await Prediction.find({ 
       user: user._id,
-      type: 'free',
-      status: 'won'
+      type: 'free'
     }).sort({ createdAt: -1 }).limit(100);
     
+    // Calculate current streak (consecutive wins from most recent)
     let currentStreak = 0;
-    let bestStreak = 0;
-    let tempStreak = 0;
-    
-    for (const prediction of predictions) {
-      tempStreak += 1;
-      bestStreak = Math.max(bestStreak, tempStreak);
+    for (const prediction of allPredictions) {
+      if (prediction.status === 'won') {
+        currentStreak++;
+      } else {
+        break; // Streak broken
+      }
     }
     
-    currentStreak = user.streak || 0;
+    // Calculate best streak (longest consecutive wins)
+    let bestStreak = 0;
+    let tempStreak = 0;
+    const sortedPredictions = [...allPredictions].reverse(); // Oldest first
+    for (const prediction of sortedPredictions) {
+      if (prediction.status === 'won') {
+        tempStreak++;
+        bestStreak = Math.max(bestStreak, tempStreak);
+      } else {
+        tempStreak = 0; // Reset streak
+      }
+    }
+    
+    // Update user streak if current streak is higher
+    if (currentStreak > (user.streak || 0)) {
+      user.streak = currentStreak;
+      await user.save();
+    }
     
     res.json({
       currentStreak,
