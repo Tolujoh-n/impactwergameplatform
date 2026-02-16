@@ -836,9 +836,14 @@ router.post('/polls/:id/resolve', async (req, res) => {
         isWinner = (prediction.outcome || '').trim() === (winningOptionText || '').trim();
       } else {
         // Normal Yes/No poll - normalize both sides for comparison
-        const normalizedOutcome = (prediction.outcome || '').toUpperCase().trim();
+        // Handle various formats: "YES", "yes", "Yes", "NO", "no", "No"
+        const predictionOutcome = (prediction.outcome || '').trim();
+        const normalizedOutcome = predictionOutcome.toUpperCase();
         const normalizedResultUpper = (normalizedResult || '').toUpperCase().trim();
-        isWinner = normalizedOutcome === normalizedResultUpper;
+        
+        // Also check if prediction outcome matches result directly (case-insensitive)
+        isWinner = normalizedOutcome === normalizedResultUpper || 
+                   predictionOutcome.toLowerCase() === normalizedResult.toLowerCase();
       }
       
       if (isWinner) {
@@ -951,9 +956,11 @@ router.post('/polls/:id/resolve', async (req, res) => {
           await user.save();
         }
       }
-      // Reset jackpot pool after distribution
+      // Only reset jackpot pool after successful distribution
+      // Keep pool visible if no winners (pool remains for next resolution)
       poll.freeJackpotPool = 0;
     }
+    // Note: If no winners, freeJackpotPool remains unchanged (stays visible)
     
     // Boost jackpot: distribute to winning boost predictions
     const boostWinningPredictions = boostPredictions.filter(p => p.status === 'won');
@@ -969,9 +976,11 @@ router.post('/polls/:id/resolve', async (req, res) => {
           await user.save();
         }
       }
-      // Reset jackpot pool after distribution
+      // Only reset jackpot pool after successful distribution
+      // Keep pool visible if no winners (pool remains for next resolution)
       poll.boostJackpotPool = 0;
     }
+    // Note: If no winners, boostJackpotPool remains unchanged (stays visible)
 
     // Award points to winning free predictions
     const freeWinningPredictionsForPoints = predictions.filter(p => p.type === 'free' && p.status === 'won');

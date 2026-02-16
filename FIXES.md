@@ -133,3 +133,13 @@ Frontend runs on: `http://localhost:3000`
 - npm audit warnings (standard for most projects, can be addressed later)
 
 These warnings do not prevent the application from running correctly.
+
+Test user accounts
+All accounts use password: password123
+player1@test.com (player1)
+player2@test.com (player2)
+player3@test.com (player3)
+player4@test.com (player4)
+player5@test.com (player5)
+player6@test.com (player6)
+player7@test.com (player7)

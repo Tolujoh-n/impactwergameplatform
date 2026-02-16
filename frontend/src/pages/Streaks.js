@@ -16,8 +16,8 @@ const Streaks = () => {
     setLoading(true);
     try {
       const endpoint = cupSlug 
-        ? `/api/streaks/cup/${cupSlug}`
-        : '/api/streaks';
+        ? `/streaks/cup/${cupSlug}`
+        : '/streaks';
       const response = await api.get(endpoint);
       setTopStreaks(response.data || []);
     } catch (error) {
@@ -30,7 +30,7 @@ const Streaks = () => {
 
   const fetchUserStreak = useCallback(async () => {
     try {
-      const response = await api.get('/api/streaks/user');
+      const response = await api.get('/streaks/user');
       setUserStreak(response.data);
       setStreakHistory(response.data.history || []);
     } catch (error) {

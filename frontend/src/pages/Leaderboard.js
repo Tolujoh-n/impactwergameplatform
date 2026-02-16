@@ -13,8 +13,8 @@ const Leaderboard = () => {
     setLoading(true);
     try {
       const endpoint = cupSlug 
-        ? `/api/leaderboard/cup/${cupSlug}?type=${filter}`
-        : `/api/leaderboard?type=${filter}`;
+        ? `/leaderboard/cup/${cupSlug}?type=${filter}`
+        : `/leaderboard?type=${filter}`;
       const response = await api.get(endpoint);
       setLeaderboard(response.data || []);
     } catch (error) {

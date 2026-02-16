@@ -16,19 +16,25 @@ router.get('/', async (req, res) => {
     // Calculate jackpot pools from actual match/poll pools
     const matches = await Match.find({});
     const polls = await Poll.find({});
+    console.log(`[Jackpots] Found ${matches.length} matches and ${polls.length} polls`);
     
-    // Sum up all free and boost jackpot pools
-    const freePool = matches.reduce((sum, m) => sum + (m.freeJackpotPool || 0), 0) +
-                     polls.reduce((sum, p) => sum + (p.freeJackpotPool || 0), 0);
-    const boostPool = matches.reduce((sum, m) => sum + (m.boostJackpotPool || 0), 0) +
-                      polls.reduce((sum, p) => sum + (p.boostJackpotPool || 0), 0);
+    // Sum up all free and boost jackpot pools (only from unresolved matches/polls)
+    const unresolvedMatches = matches.filter(m => !m.isResolved);
+    const unresolvedPolls = polls.filter(p => !p.isResolved);
+    console.log(`[Jackpots] Unresolved: ${unresolvedMatches.length} matches, ${unresolvedPolls.length} polls`);
+    
+    const freePool = unresolvedMatches.reduce((sum, m) => sum + (m.freeJackpotPool || 0), 0) +
+                     unresolvedPolls.reduce((sum, p) => sum + (p.freeJackpotPool || 0), 0);
+    const boostPool = unresolvedMatches.reduce((sum, m) => sum + (m.boostJackpotPool || 0), 0) +
+                      unresolvedPolls.reduce((sum, p) => sum + (p.boostJackpotPool || 0), 0);
+    console.log(`[Jackpots] Free pool: ${freePool}, Boost pool: ${boostPool}`);
     
     const jackpots = [
       {
         _id: 'daily-free',
         name: 'Daily Free Jackpot',
         type: 'free',
-        amount: Math.floor(freePool * 0.3),
+        amount: Math.max(Math.floor(freePool * 0.3), freePool > 0 ? 1 : 0),
         participants: await getEligibleUsers('free', 'daily'),
         endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
         minStreak: 3,
@@ -38,7 +44,7 @@ router.get('/', async (req, res) => {
         _id: 'daily-boost',
         name: 'Daily Boost Jackpot',
         type: 'boost',
-        amount: boostPool * 0.3,
+        amount: Math.max(boostPool * 0.3, boostPool > 0 ? 0.0001 : 0),
         participants: await getEligibleUsers('boost', 'daily'),
         endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
         minStreak: 5,
@@ -48,7 +54,7 @@ router.get('/', async (req, res) => {
         _id: 'tournament-free',
         name: 'Tournament Free Jackpot',
         type: 'free',
-        amount: Math.floor(freePool * 0.5),
+        amount: Math.max(Math.floor(freePool * 0.5), freePool > 0 ? 1 : 0),
         participants: await getEligibleUsers('free', 'tournament'),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         minStreak: 10,
@@ -58,7 +64,7 @@ router.get('/', async (req, res) => {
         _id: 'tournament-boost',
         name: 'Tournament Boost Jackpot',
         type: 'boost',
-        amount: boostPool * 0.5,
+        amount: Math.max(boostPool * 0.5, boostPool > 0 ? 0.0001 : 0),
         participants: await getEligibleUsers('boost', 'tournament'),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         minStreak: 15,
@@ -70,8 +76,9 @@ router.get('/', async (req, res) => {
       ? jackpots.filter(j => j.type === type)
       : jackpots;
     
-    // Ensure minimum values for display
+    // Ensure minimum values for display - always show jackpots even if pools are low
     for (const jackpot of filtered) {
+      // Always set a minimum amount for display purposes
       if (jackpot.amount <= 0) {
         jackpot.amount = jackpot.type === 'free' ? 100 : 0.1;
       }
@@ -91,6 +98,7 @@ router.get('/', async (req, res) => {
       }
     }
     
+    console.log(`[Jackpots] Returning ${filtered.length} jackpots`);
     res.json(filtered);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -108,22 +116,25 @@ router.get('/cup/:cupSlug', async (req, res) => {
       return res.status(404).json({ message: 'Cup not found' });
     }
     
-    // Get actual jackpot pools from matches and polls in this cup
+    // Get actual jackpot pools from matches and polls in this cup (only unresolved)
     const matches = await Match.find({ cup: cup._id });
     const polls = await Poll.find({ cup: cup._id });
     const matchIds = matches.map(m => m._id);
     
-    const boostPool = matches.reduce((sum, m) => sum + (m.boostJackpotPool || 0), 0) +
-                      polls.reduce((sum, p) => sum + (p.boostJackpotPool || 0), 0);
-    const freePool = matches.reduce((sum, m) => sum + (m.freeJackpotPool || 0), 0) +
-                     polls.reduce((sum, p) => sum + (p.freeJackpotPool || 0), 0);
+    const unresolvedMatches = matches.filter(m => !m.isResolved);
+    const unresolvedPolls = polls.filter(p => !p.isResolved);
+    
+    const boostPool = unresolvedMatches.reduce((sum, m) => sum + (m.boostJackpotPool || 0), 0) +
+                      unresolvedPolls.reduce((sum, p) => sum + (p.boostJackpotPool || 0), 0);
+    const freePool = unresolvedMatches.reduce((sum, m) => sum + (m.freeJackpotPool || 0), 0) +
+                     unresolvedPolls.reduce((sum, p) => sum + (p.freeJackpotPool || 0), 0);
     
     const jackpots = [
       {
         _id: `cup-${cupSlug}-free`,
         name: `${cup.name} Free Jackpot`,
         type: 'free',
-        amount: Math.floor(freePool * 0.5),
+        amount: Math.max(Math.floor(freePool * 0.5), freePool > 0 ? 1 : 0),
         participants: await getEligibleUsers('free', 'cup', cup._id),
         endDate: cup.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         minStreak: 5,
@@ -133,7 +144,7 @@ router.get('/cup/:cupSlug', async (req, res) => {
         _id: `cup-${cupSlug}-boost`,
         name: `${cup.name} Boost Jackpot`,
         type: 'boost',
-        amount: boostPool * 0.5,
+        amount: Math.max(boostPool * 0.5, boostPool > 0 ? 0.0001 : 0),
         participants: await getEligibleUsers('boost', 'cup', cup._id),
         endDate: cup.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         minStreak: 10,
@@ -145,7 +156,7 @@ router.get('/cup/:cupSlug', async (req, res) => {
       ? jackpots.filter(j => j.type === type)
       : jackpots;
     
-    // Ensure minimum values for display
+    // Ensure minimum values for display - always show jackpots
     for (const jackpot of filtered) {
       if (jackpot.amount <= 0) {
         jackpot.amount = jackpot.type === 'free' ? 100 : 0.1;
@@ -166,6 +177,7 @@ router.get('/cup/:cupSlug', async (req, res) => {
       }
     }
     
+    console.log(`[Jackpots Cup] Returning ${filtered.length} jackpots`);
     res.json(filtered);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -177,9 +189,20 @@ async function getEligibleUsers(type, period, cupId = null) {
   let eligible = 0;
   
   for (const user of users) {
-    const predictions = cupId
-      ? await Prediction.find({ user: user._id, match: { $in: await getMatchIds(cupId) } })
-      : await Prediction.find({ user: user._id });
+    let predictions;
+    if (cupId) {
+      const matchIds = await getMatchIds(cupId);
+      const pollIds = await getPollIds(cupId);
+      predictions = await Prediction.find({
+        user: user._id,
+        $or: [
+          { match: { $in: matchIds } },
+          { poll: { $in: pollIds } }
+        ]
+      });
+    } else {
+      predictions = await Prediction.find({ user: user._id });
+    }
     
     const correctPredictions = predictions.filter(p => p.status === 'won' && p.type === type);
     const streak = user.streak || 0;
@@ -198,9 +221,20 @@ async function checkEligibility(userId, jackpot, cupId = null) {
   const user = await User.findById(userId);
   if (!user) return false;
   
-  const predictions = cupId
-      ? await Prediction.find({ user: userId, match: { $in: await getMatchIds(cupId) } })
-      : await Prediction.find({ user: userId });
+  let predictions;
+  if (cupId) {
+    const matchIds = await getMatchIds(cupId);
+    const pollIds = await getPollIds(cupId);
+    predictions = await Prediction.find({
+      user: userId,
+      $or: [
+        { match: { $in: matchIds } },
+        { poll: { $in: pollIds } }
+      ]
+    });
+  } else {
+    predictions = await Prediction.find({ user: userId });
+  }
   
   const correctPredictions = predictions.filter(p => p.status === 'won' && p.type === jackpot.type);
   const streak = user.streak || 0;
@@ -211,6 +245,11 @@ async function checkEligibility(userId, jackpot, cupId = null) {
 async function getMatchIds(cupId) {
   const matches = await Match.find({ cup: cupId });
   return matches.map(m => m._id);
+}
+
+async function getPollIds(cupId) {
+  const polls = await Poll.find({ cup: cupId });
+  return polls.map(p => p._id);
 }
 
 // Get user jackpot stats

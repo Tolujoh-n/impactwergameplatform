@@ -23,8 +23,8 @@ const Jackpot = () => {
     setLoading(true);
     try {
       const endpoint = cupSlug 
-        ? `/api/jackpots/cup/${cupSlug}?type=${filter}`
-        : `/api/jackpots?type=${filter}`;
+        ? `/jackpots/cup/${cupSlug}?type=${filter}`
+        : `/jackpots?type=${filter}`;
       const response = await api.get(endpoint);
       setJackpots(response.data || []);
     } catch (error) {
@@ -47,7 +47,7 @@ const Jackpot = () => {
       return;
     }
     try {
-      const response = await api.get('/api/jackpots/user/stats');
+      const response = await api.get('/jackpots/user/stats');
       setUserStats(response.data || {
         jackpotBalance: 0,
         jackpotWithdrawn: 0,
@@ -79,7 +79,7 @@ const Jackpot = () => {
 
     setWithdrawing(true);
     try {
-      const response = await api.post('/api/jackpots/withdraw', { amount: withdrawAmount });
+      const response = await api.post('/jackpots/withdraw', { amount: withdrawAmount });
       alert('Withdrawal successful!');
       setWithdrawAmount('');
       await fetchUserStats();
