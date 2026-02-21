@@ -573,12 +573,31 @@ router.post('/market/buy', auth, async (req, res) => {
       return res.status(400).json({ message: 'Market not initialized' });
     }
     
-    // Calculate shares using constant product formula (simplified)
-    // Use net amount for share calculation
-    shares = (netInvestAmount * optionLiquidity) / (totalLiquidity + netInvestAmount);
+    // Fixed-Sum AMM Logic:
+    // Price per share = outcomeLiquidity / totalLiquidity (rounded to 4 decimals)
+    // When buying X ETH: shares = X / currentPrice
+    // After buying: newLiquidity = oldLiquidity + X, newTotal = oldTotal + X
     
-    // Calculate current price for this option
-    const currentPrice = totalLiquidity > 0 ? (optionLiquidity / totalLiquidity) : 0;
+    // Calculate current price BEFORE adding investment (rounded to 4 decimals)
+    const currentPrice = totalLiquidity > 0 
+      ? parseFloat((optionLiquidity / totalLiquidity).toFixed(4)) 
+      : 0;
+    
+    // Calculate shares: shares = investment / currentPrice
+    if (currentPrice === 0) {
+      // If price is 0, market not initialized properly
+      return res.status(400).json({ message: 'Cannot calculate shares: price is 0' });
+    }
+    shares = parseFloat((netInvestAmount / currentPrice).toFixed(4));
+    
+    // Calculate new liquidity after adding investment
+    const newOptionLiquidity = optionLiquidity + netInvestAmount;
+    const newTotalLiquidity = totalLiquidity + netInvestAmount;
+    
+    // Calculate new price after investment (should be higher, rounded to 4 decimals)
+    const newPrice = newTotalLiquidity > 0 
+      ? parseFloat((newOptionLiquidity / newTotalLiquidity).toFixed(4)) 
+      : 0;
     
     // Find or create prediction FOR THIS SPECIFIC OPTION (isolated per option)
     const query = {
@@ -608,7 +627,7 @@ router.post('/market/buy', auth, async (req, res) => {
       });
     }
     
-    // Create trade record for this buy transaction (store net amount)
+    // Create trade record for this buy transaction (store net amount and new price)
     const trade = new Trade({
       user: req.user._id,
       match: matchId,
@@ -617,20 +636,21 @@ router.post('/market/buy', auth, async (req, res) => {
       outcome: normalizedOutcome,
       amount: netInvestAmount,
       shares: shares,
-      price: currentPrice,
+      price: newPrice, // Store the new price after purchase (should be higher)
     });
     await trade.save();
     
-    // Update market liquidity with net amount and fees
+    // Update market liquidity with net amount (AMM: buying increases option's pool)
+    // This automatically increases the price because optionLiquidity/totalLiquidity increases
     if (matchId) {
       if (normalizedOutcome === 'TEAMA') {
-        item.marketTeamALiquidity = (item.marketTeamALiquidity || 0) + netInvestAmount;
+        item.marketTeamALiquidity = newOptionLiquidity; // Use new liquidity (old + investment)
         item.marketTeamAShares = (item.marketTeamAShares || 0) + shares;
       } else if (normalizedOutcome === 'TEAMB') {
-        item.marketTeamBLiquidity = (item.marketTeamBLiquidity || 0) + netInvestAmount;
+        item.marketTeamBLiquidity = newOptionLiquidity;
         item.marketTeamBShares = (item.marketTeamBShares || 0) + shares;
       } else if (normalizedOutcome === 'DRAW') {
-        item.marketDrawLiquidity = (item.marketDrawLiquidity || 0) + netInvestAmount;
+        item.marketDrawLiquidity = newOptionLiquidity;
         item.marketDrawShares = (item.marketDrawShares || 0) + shares;
       }
       // Update fees and jackpot pools
@@ -642,16 +662,16 @@ router.post('/market/buy', auth, async (req, res) => {
         // Update the specific option
         const selectedOption = item.options.find(opt => opt.text === outcome);
         if (selectedOption) {
-          selectedOption.liquidity = (selectedOption.liquidity || 0) + netInvestAmount;
+          selectedOption.liquidity = newOptionLiquidity; // Use new liquidity
           selectedOption.shares = (selectedOption.shares || 0) + shares;
         }
       } else {
         // Normal Yes/No poll
         if (normalizedOutcome === 'YES') {
-          item.marketYesLiquidity = (item.marketYesLiquidity || 0) + netInvestAmount;
+          item.marketYesLiquidity = newOptionLiquidity;
           item.marketYesShares = (item.marketYesShares || 0) + shares;
         } else if (normalizedOutcome === 'NO') {
-          item.marketNoLiquidity = (item.marketNoLiquidity || 0) + netInvestAmount;
+          item.marketNoLiquidity = newOptionLiquidity;
           item.marketNoShares = (item.marketNoShares || 0) + shares;
         }
       }
@@ -664,7 +684,63 @@ router.post('/market/buy', auth, async (req, res) => {
     await prediction.save();
     await item.save();
     
-    res.json(prediction);
+    // Reload item to get fresh data with updated prices
+    const updatedItem = matchId 
+      ? await Match.findById(matchId)
+      : await Poll.findById(pollId);
+    
+    // Calculate updated prices for response
+    let updatedPrices = {};
+    let updatedTotalLiquidity = 0;
+    
+    if (matchId) {
+      updatedTotalLiquidity = (updatedItem.marketTeamALiquidity || 0) + 
+                              (updatedItem.marketTeamBLiquidity || 0) + 
+                              (updatedItem.marketDrawLiquidity || 0);
+      // Round all prices to 4 decimal places
+      updatedPrices.teamA = updatedTotalLiquidity > 0 
+        ? parseFloat(((updatedItem.marketTeamALiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+        : parseFloat((0.333).toFixed(4));
+      updatedPrices.teamB = updatedTotalLiquidity > 0 
+        ? parseFloat(((updatedItem.marketTeamBLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+        : parseFloat((0.333).toFixed(4));
+      updatedPrices.draw = updatedTotalLiquidity > 0 
+        ? parseFloat(((updatedItem.marketDrawLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+        : parseFloat((0.333).toFixed(4));
+    } else {
+      if (updatedItem.optionType === 'options') {
+        updatedTotalLiquidity = updatedItem.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+        updatedItem.options.forEach(opt => {
+          const defaultPrice = 1 / updatedItem.options.length;
+          updatedPrices[opt.text] = updatedTotalLiquidity > 0 
+            ? parseFloat(((opt.liquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+            : parseFloat(defaultPrice.toFixed(4));
+        });
+      } else {
+        updatedTotalLiquidity = (updatedItem.marketYesLiquidity || 0) + (updatedItem.marketNoLiquidity || 0);
+        updatedPrices.yes = updatedTotalLiquidity > 0 
+          ? parseFloat(((updatedItem.marketYesLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+          : parseFloat((0.5).toFixed(4));
+        updatedPrices.no = updatedTotalLiquidity > 0 
+          ? parseFloat(((updatedItem.marketNoLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+          : parseFloat((0.5).toFixed(4));
+      }
+    }
+    
+    // Verify prices sum to 1.0
+    const priceSum = Object.values(updatedPrices).reduce((sum, price) => sum + price, 0);
+    if (Math.abs(priceSum - 1.0) > 0.01) {
+      console.warn('Prices do not sum to 1.0 after buy:', priceSum, updatedPrices);
+    }
+    
+    res.json({
+      prediction,
+      updatedItem,
+      updatedPrices,
+      newPrice,
+      totalLiquidity: updatedTotalLiquidity,
+      message: 'Buy successful. All prices updated.'
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -793,8 +869,8 @@ router.post('/market/sell', auth, async (req, res) => {
       if (item.optionType === 'options') {
         // Calculate total liquidity from all options
         totalLiquidity = item.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
-        // Find the selected option
-        const selectedOption = item.options.find(opt => opt.text === outcome);
+        // Find the selected option using normalizedOutcome (from prediction)
+        const selectedOption = item.options.find(opt => opt.text === normalizedOutcome || opt.text === outcome);
         if (selectedOption) {
           optionLiquidity = selectedOption.liquidity || 0;
         }
@@ -809,13 +885,21 @@ router.post('/market/sell', auth, async (req, res) => {
       }
     }
     
-    // Calculate current price for this option
-    const currentPrice = totalLiquidity > 0 ? (optionLiquidity / totalLiquidity) : 0;
+    // Fixed-Sum AMM Sell Logic:
+    // Price per share = outcomeLiquidity / totalLiquidity (rounded to 4 decimals)
+    // When selling Y shares: payout = Y * currentPrice
+    // After selling: newLiquidity = oldLiquidity - payout, newTotal = oldTotal - payout
     
-    if (totalLiquidity > 0 && optionLiquidity > 0) {
-      // Calculate payout (simplified - in real AMM this would be more complex)
-      payout = (sellShares * totalLiquidity) / (optionLiquidity + sellShares);
+    // Calculate current price BEFORE selling (rounded to 4 decimals)
+    const currentPrice = totalLiquidity > 0 
+      ? parseFloat((optionLiquidity / totalLiquidity).toFixed(4)) 
+      : 0;
+    
+    // Calculate payout: payout = shares * currentPrice
+    if (currentPrice === 0) {
+      return res.status(400).json({ message: 'Cannot calculate payout: price is 0' });
     }
+    payout = parseFloat((sellShares * currentPrice).toFixed(4));
     
     // Update prediction
     prediction.shares = currentShares - sellShares;
@@ -824,38 +908,47 @@ router.post('/market/sell', auth, async (req, res) => {
     }
     prediction.updatedAt = new Date();
     
-    // Update market liquidity
+    // Update market liquidity (AMM: selling decreases option's pool, which decreases price)
+    // Calculate new liquidity after removing payout
+    const newOptionLiquidity = Math.max(0, optionLiquidity - payout);
+    const newTotalLiquidity = Math.max(0, totalLiquidity - payout);
+    
     if (matchId) {
       if (normalizedOutcome === 'TEAMA') {
-        item.marketTeamALiquidity = Math.max(0, (item.marketTeamALiquidity || 0) - payout);
+        item.marketTeamALiquidity = newOptionLiquidity; // Decreased liquidity = lower price
         item.marketTeamAShares = Math.max(0, (item.marketTeamAShares || 0) - sellShares);
       } else if (normalizedOutcome === 'TEAMB') {
-        item.marketTeamBLiquidity = Math.max(0, (item.marketTeamBLiquidity || 0) - payout);
+        item.marketTeamBLiquidity = newOptionLiquidity;
         item.marketTeamBShares = Math.max(0, (item.marketTeamBShares || 0) - sellShares);
       } else if (normalizedOutcome === 'DRAW') {
-        item.marketDrawLiquidity = Math.max(0, (item.marketDrawLiquidity || 0) - payout);
+        item.marketDrawLiquidity = newOptionLiquidity;
         item.marketDrawShares = Math.max(0, (item.marketDrawShares || 0) - sellShares);
       }
     } else {
       // Handle poll
       if (item.optionType === 'options') {
-        const selectedOption = item.options.find(opt => opt.text === outcome);
+        const selectedOption = item.options.find(opt => opt.text === outcome || opt.text === normalizedOutcome);
         if (selectedOption) {
-          selectedOption.liquidity = Math.max(0, (selectedOption.liquidity || 0) - payout);
+          selectedOption.liquidity = newOptionLiquidity; // Decreased liquidity = lower price
           selectedOption.shares = Math.max(0, (selectedOption.shares || 0) - sellShares);
         }
       } else {
         if (normalizedOutcome === 'YES') {
-          item.marketYesLiquidity = Math.max(0, (item.marketYesLiquidity || 0) - payout);
+          item.marketYesLiquidity = newOptionLiquidity;
           item.marketYesShares = Math.max(0, (item.marketYesShares || 0) - sellShares);
         } else if (normalizedOutcome === 'NO') {
-          item.marketNoLiquidity = Math.max(0, (item.marketNoLiquidity || 0) - payout);
+          item.marketNoLiquidity = newOptionLiquidity;
           item.marketNoShares = Math.max(0, (item.marketNoShares || 0) - sellShares);
         }
       }
     }
     
-    // Create trade record for this sell transaction
+    // Calculate new price after selling (should be lower, rounded to 4 decimals)
+    const newPrice = newTotalLiquidity > 0 
+      ? parseFloat((newOptionLiquidity / newTotalLiquidity).toFixed(4)) 
+      : 0;
+    
+    // Create trade record for this sell transaction (store new price after sell)
     const trade = new Trade({
       user: req.user._id,
       match: matchId,
@@ -864,17 +957,71 @@ router.post('/market/sell', auth, async (req, res) => {
       outcome: normalizedOutcome,
       amount: payout,
       shares: sellShares,
-      price: currentPrice,
+      price: newPrice, // Store the new price after selling (should be lower)
     });
     await trade.save();
     
     await prediction.save();
     await item.save();
     
+    // Reload item to get fresh data with updated prices
+    const updatedItem = matchId 
+      ? await Match.findById(matchId)
+      : await Poll.findById(pollId);
+    
+    // Calculate updated prices for response
+    let updatedPrices = {};
+    let updatedTotalLiquidity = 0;
+    
+    if (matchId) {
+      updatedTotalLiquidity = (updatedItem.marketTeamALiquidity || 0) + 
+                              (updatedItem.marketTeamBLiquidity || 0) + 
+                              (updatedItem.marketDrawLiquidity || 0);
+      // Round all prices to 4 decimal places
+      updatedPrices.teamA = updatedTotalLiquidity > 0 
+        ? parseFloat(((updatedItem.marketTeamALiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+        : parseFloat((0.333).toFixed(4));
+      updatedPrices.teamB = updatedTotalLiquidity > 0 
+        ? parseFloat(((updatedItem.marketTeamBLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+        : parseFloat((0.333).toFixed(4));
+      updatedPrices.draw = updatedTotalLiquidity > 0 
+        ? parseFloat(((updatedItem.marketDrawLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+        : parseFloat((0.333).toFixed(4));
+    } else {
+      if (updatedItem.optionType === 'options') {
+        updatedTotalLiquidity = updatedItem.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+        updatedItem.options.forEach(opt => {
+          const defaultPrice = 1 / updatedItem.options.length;
+          updatedPrices[opt.text] = updatedTotalLiquidity > 0 
+            ? parseFloat(((opt.liquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+            : parseFloat(defaultPrice.toFixed(4));
+        });
+      } else {
+        updatedTotalLiquidity = (updatedItem.marketYesLiquidity || 0) + (updatedItem.marketNoLiquidity || 0);
+        updatedPrices.yes = updatedTotalLiquidity > 0 
+          ? parseFloat(((updatedItem.marketYesLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+          : parseFloat((0.5).toFixed(4));
+        updatedPrices.no = updatedTotalLiquidity > 0 
+          ? parseFloat(((updatedItem.marketNoLiquidity || 0) / updatedTotalLiquidity).toFixed(4)) 
+          : parseFloat((0.5).toFixed(4));
+      }
+    }
+    
+    // Verify prices sum to 1.0
+    const priceSum = Object.values(updatedPrices).reduce((sum, price) => sum + price, 0);
+    if (Math.abs(priceSum - 1.0) > 0.01) {
+      console.warn('Prices do not sum to 1.0 after sell:', priceSum, updatedPrices);
+    }
+    
     res.json({
       prediction,
       payout,
       sharesSold: sellShares,
+      updatedItem,
+      updatedPrices,
+      newPrice,
+      totalLiquidity: updatedTotalLiquidity,
+      message: 'Sell successful. All prices updated.'
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

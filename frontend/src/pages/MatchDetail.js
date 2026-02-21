@@ -1044,34 +1044,77 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     
     if (isPoll) {
       // Poll: Handle option-based or Yes/No
-      if (itemData.optionType === 'options' && itemData.options) {
-        totalLiquidity = itemData.options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
+      if (itemData.optionType === 'options' && itemData.options && Array.isArray(itemData.options)) {
+        totalLiquidity = itemData.options.reduce((sum, opt) => sum + (parseFloat(opt.liquidity) || 0), 0);
         itemData.options.forEach(opt => {
-          calculatedPrices[opt.text] = totalLiquidity === 0 ? (1 / itemData.options.length) : (opt.liquidity || 0) / totalLiquidity;
-          calculatedPriceAmounts[opt.text] = opt.liquidity || 0;
+          const optLiquidity = parseFloat(opt.liquidity) || 0;
+          const defaultPrice = 1 / itemData.options.length;
+          // Round all prices to 4 decimal places
+          calculatedPrices[opt.text] = totalLiquidity === 0 
+            ? parseFloat(defaultPrice.toFixed(4)) 
+            : parseFloat((optLiquidity / totalLiquidity).toFixed(4));
+          calculatedPriceAmounts[opt.text] = optLiquidity;
         });
       } else {
         // Normal Yes/No poll
-        totalLiquidity = (itemData.marketYesLiquidity || 0) + (itemData.marketNoLiquidity || 0);
-        calculatedPrices.yes = totalLiquidity === 0 ? 0.5 : (itemData.marketYesLiquidity || 0) / totalLiquidity;
-        calculatedPrices.no = totalLiquidity === 0 ? 0.5 : (itemData.marketNoLiquidity || 0) / totalLiquidity;
-        calculatedPriceAmounts.yes = itemData.marketYesLiquidity || 0;
-        calculatedPriceAmounts.no = itemData.marketNoLiquidity || 0;
+        const yesLiq = parseFloat(itemData.marketYesLiquidity) || 0;
+        const noLiq = parseFloat(itemData.marketNoLiquidity) || 0;
+        totalLiquidity = yesLiq + noLiq;
+        // Round all prices to 4 decimal places
+        calculatedPrices.yes = totalLiquidity === 0 
+          ? parseFloat((0.5).toFixed(4)) 
+          : parseFloat((yesLiq / totalLiquidity).toFixed(4));
+        calculatedPrices.no = totalLiquidity === 0 
+          ? parseFloat((0.5).toFixed(4)) 
+          : parseFloat((noLiq / totalLiquidity).toFixed(4));
+        calculatedPriceAmounts.yes = yesLiq;
+        calculatedPriceAmounts.no = noLiq;
       }
     } else {
       // Match: TeamA/TeamB/Draw
-      totalLiquidity = (itemData.marketTeamALiquidity || 0) + (itemData.marketTeamBLiquidity || 0) + (itemData.marketDrawLiquidity || 0);
-      calculatedPrices.teamA = totalLiquidity === 0 ? 0.333 : (itemData.marketTeamALiquidity || 0) / totalLiquidity;
-      calculatedPrices.teamB = totalLiquidity === 0 ? 0.333 : (itemData.marketTeamBLiquidity || 0) / totalLiquidity;
-      calculatedPrices.draw = totalLiquidity === 0 ? 0.333 : (itemData.marketDrawLiquidity || 0) / totalLiquidity;
-      calculatedPriceAmounts.teamA = itemData.marketTeamALiquidity || 0;
-      calculatedPriceAmounts.teamB = itemData.marketTeamBLiquidity || 0;
-      calculatedPriceAmounts.draw = itemData.marketDrawLiquidity || 0;
+      // Parse liquidity values to ensure they're numbers
+      const teamALiq = parseFloat(itemData.marketTeamALiquidity) || 0;
+      const teamBLiq = parseFloat(itemData.marketTeamBLiquidity) || 0;
+      const drawLiq = parseFloat(itemData.marketDrawLiquidity) || 0;
+      totalLiquidity = teamALiq + teamBLiq + drawLiq;
+      
+      // Price = liquidity / total (ensures sum = 1.0)
+      // Example: TeamA=2, Draw=1, TeamB=1, Total=4
+      // TeamA price = 2/4 = 0.50, Draw = 1/4 = 0.25, TeamB = 1/4 = 0.25
+      // Round all prices to 4 decimal places
+      calculatedPrices.teamA = totalLiquidity === 0 
+        ? parseFloat((0.333).toFixed(4)) 
+        : parseFloat((teamALiq / totalLiquidity).toFixed(4));
+      calculatedPrices.teamB = totalLiquidity === 0 
+        ? parseFloat((0.333).toFixed(4)) 
+        : parseFloat((teamBLiq / totalLiquidity).toFixed(4));
+      calculatedPrices.draw = totalLiquidity === 0 
+        ? parseFloat((0.333).toFixed(4)) 
+        : parseFloat((drawLiq / totalLiquidity).toFixed(4));
+      calculatedPriceAmounts.teamA = teamALiq;
+      calculatedPriceAmounts.teamB = teamBLiq;
+      calculatedPriceAmounts.draw = drawLiq;
+      
+      // Debug logging for matches
+      console.log('Match Price Calculation:', {
+        teamALiq,
+        teamBLiq,
+        drawLiq,
+        totalLiquidity,
+        prices: calculatedPrices,
+        priceSum: calculatedPrices.teamA + calculatedPrices.teamB + calculatedPrices.draw
+      });
     }
     
     setPrices(calculatedPrices);
     setPriceAmounts(calculatedPriceAmounts);
-  }, [currentItem, item, isPoll]);
+    
+    // Debug: Log price sum to verify it equals 1.0
+    const priceSum = Object.values(calculatedPrices).reduce((sum, price) => sum + price, 0);
+    if (Math.abs(priceSum - 1.0) > 0.01) {
+      console.warn('Prices do not sum to 1.0:', priceSum, calculatedPrices);
+    }
+  }, [currentItem, item, isPoll, itemData.marketTeamALiquidity, itemData.marketTeamBLiquidity, itemData.marketDrawLiquidity, itemData.marketYesLiquidity, itemData.marketNoLiquidity, itemData.options]);
 
   const fetchMarketData = useCallback(async () => {
     try {
@@ -1118,13 +1161,31 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
       fetchUserMarketPrediction();
     }
     
-    // Set up polling to refresh market data every 5 seconds
+    // Set up polling to refresh market data every 2 seconds for real-time updates
     const interval = setInterval(() => {
       fetchMarketData();
       if (user) {
         fetchUserMarketPrediction();
       }
-    }, 5000);
+      // Also refresh item data to get latest liquidity
+      const itemId = (currentItem || item)?._id || item?._id;
+      if (itemId) {
+        const refreshItem = async () => {
+          try {
+            const itemResponse = isPoll 
+              ? await api.get(`/polls/${itemId}`)
+              : await api.get(`/matches/${itemId}`);
+            setCurrentItem(itemResponse.data);
+            if (onItemUpdate) {
+              onItemUpdate(itemResponse.data);
+            }
+          } catch (error) {
+            console.error('Error refreshing item:', error);
+          }
+        };
+        refreshItem();
+      }
+    }, 2000);
     
     return () => clearInterval(interval);
   }, [currentItem, item, user, isPoll, fetchMarketData, fetchUserMarketPrediction]);
@@ -1153,11 +1214,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
 
     try {
       if (tradeType === 'buy') {
-        await api.post('/predictions/market/buy', {
+        const buyResponse = await api.post('/predictions/market/buy', {
           [isPoll ? 'pollId' : 'matchId']: itemData._id,
           outcome: selectedOption,
           amount: parseFloat(amount),
         });
+        
+        // Update item immediately with response data if available
+        if (buyResponse.data.updatedItem) {
+          setCurrentItem(buyResponse.data.updatedItem);
+          if (onItemUpdate) {
+            onItemUpdate(buyResponse.data.updatedItem);
+          }
+        }
+        
+        // Update prices if provided - this ensures ALL prices update (not just the traded one)
+        if (buyResponse.data.updatedPrices) {
+          setPrices(buyResponse.data.updatedPrices);
+        }
+        
+        // Force refresh user predictions to get updated share values
+        await fetchUserMarketPrediction();
+        
         showNotification('Buy order executed successfully!', 'success');
       } else {
         // For sell, we need to specify outcome, shares or use 'max'
@@ -1208,11 +1286,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           sharesToSell = parsedAmount;
         }
         
-        await api.post('/predictions/market/sell', {
+        const sellResponse = await api.post('/predictions/market/sell', {
           [isPoll ? 'pollId' : 'matchId']: itemData._id,
           outcome: outcomeToSend, // Use the stored outcome from prediction
           shares: sharesToSell,
         });
+        
+        // Update item immediately with response data if available
+        if (sellResponse.data.updatedItem) {
+          setCurrentItem(sellResponse.data.updatedItem);
+          if (onItemUpdate) {
+            onItemUpdate(sellResponse.data.updatedItem);
+          }
+        }
+        
+        // Update prices if provided - this ensures ALL prices update (not just the traded one)
+        if (sellResponse.data.updatedPrices) {
+          setPrices(sellResponse.data.updatedPrices);
+        }
+        
+        // Force refresh user predictions to get updated share values
+        await fetchUserMarketPrediction();
+        
         showNotification('Sell order executed successfully!', 'success');
       }
       setAmount('');
@@ -1799,6 +1894,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Select Option
                 </label>
+                {selectedOption && (() => {
+                  // Get current price for selected option
+                  let currentPrice = 0;
+                  if (isPoll) {
+                    if (itemData.optionType === 'options' && itemData.options) {
+                      currentPrice = prices[selectedOption] || 0;
+                    } else {
+                      currentPrice = selectedOption.toLowerCase() === 'yes' ? (prices.yes || 0) : (prices.no || 0);
+                    }
+                  } else {
+                    if (selectedOption === 'teamA') currentPrice = prices.teamA || 0;
+                    else if (selectedOption === 'teamB') currentPrice = prices.teamB || 0;
+                    else if (selectedOption === 'draw') currentPrice = prices.draw || 0;
+                  }
+                  return currentPrice > 0 && (
+                    <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Current Price: <span className="font-semibold text-blue-600 dark:text-blue-400">{currentPrice.toFixed(4)} ETH per share</span>
+                      </p>
+                    </div>
+                  );
+                })()}
                 {isPoll ? (
                   itemData.optionType === 'options' && itemData.options ? (
                     <div className="grid grid-cols-1 gap-2">
@@ -2042,11 +2159,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                     );
                   })()}
                 </div>
-                {tradeType === 'buy' && selectedOption && amount && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    You'll receive ~{((parseFloat(amount) || 0) / (prices[selectedOption] || 1)).toFixed(4)} shares
-                  </p>
-                )}
+                {tradeType === 'buy' && selectedOption && amount && (() => {
+                  // Get current price for selected option
+                  let currentPrice = 0;
+                  if (isPoll) {
+                    if (itemData.optionType === 'options' && itemData.options) {
+                      currentPrice = prices[selectedOption] || 0;
+                    } else {
+                      currentPrice = selectedOption.toLowerCase() === 'yes' ? (prices.yes || 0) : (prices.no || 0);
+                    }
+                  } else {
+                    if (selectedOption === 'teamA') currentPrice = prices.teamA || 0;
+                    else if (selectedOption === 'teamB') currentPrice = prices.teamB || 0;
+                    else if (selectedOption === 'draw') currentPrice = prices.draw || 0;
+                  }
+                  const ethAmount = parseFloat(amount) || 0;
+                  const estimatedShares = currentPrice > 0 ? (ethAmount / currentPrice) : 0;
+                  return ethAmount > 0 && currentPrice > 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      You'll receive ~<span className="font-semibold">{estimatedShares.toFixed(4)}</span> shares at {currentPrice.toFixed(4)} ETH per share
+                    </p>
+                  );
+                })()}
                 {tradeType === 'sell' && selectedOption && (() => {
                   // Find the prediction for this option (try multiple variations)
                   let optionPrediction = predictions[selectedOption];
@@ -2101,9 +2235,22 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                         }
                       }
                       
-                      // Estimate ETH: (shares to sell / total shares) * option liquidity
-                      if (totalSharesForOption > 0) {
-                        equivalentETH = (sharesToSell / totalSharesForOption) * optionLiquidity;
+                      // Use current price: payout = shares * currentPrice
+                      let currentPrice = 0;
+                      if (isPoll) {
+                        if (itemData.optionType === 'options' && itemData.options) {
+                          currentPrice = prices[selectedOption] || 0;
+                        } else {
+                          currentPrice = selectedOption.toLowerCase() === 'yes' ? (prices.yes || 0) : (prices.no || 0);
+                        }
+                      } else {
+                        if (selectedOption === 'teamA') currentPrice = prices.teamA || 0;
+                        else if (selectedOption === 'teamB') currentPrice = prices.teamB || 0;
+                        else if (selectedOption === 'draw') currentPrice = prices.draw || 0;
+                      }
+                      
+                      if (currentPrice > 0) {
+                        equivalentETH = sharesToSell * currentPrice;
                       }
                     }
                   }
@@ -2111,9 +2258,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   return (
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-1">
                       <p>Available: {availableShares.toFixed(4)} shares</p>
-                      {amount && amount !== 'max' && amount !== 'all' && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && (
+                      {amount && amount !== 'max' && amount !== 'all' && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && equivalentETH > 0 && (
                         <p className="font-semibold text-gray-700 dark:text-gray-300">
-                          ≈ {equivalentETH.toFixed(4)} ETH
+                          You'll receive ≈ {equivalentETH.toFixed(4)} ETH
                         </p>
                       )}
                     </div>
