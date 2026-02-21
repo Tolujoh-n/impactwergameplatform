@@ -484,6 +484,11 @@ router.post('/matches/:id/resolve', async (req, res) => {
       if (prediction.type === 'boost') {
         boostPredictions.push(prediction);
       }
+      
+      // Save free predictions after status is set
+      if (prediction.type === 'free') {
+        await prediction.save();
+      }
     }
 
     // Calculate market payouts: distribute total liquidity proportionally to winners
@@ -874,6 +879,11 @@ router.post('/polls/:id/resolve', async (req, res) => {
       
       if (prediction.type === 'boost') {
         boostPredictions.push(prediction);
+      }
+      
+      // Save free predictions after status is set
+      if (prediction.type === 'free') {
+        await prediction.save();
       }
     }
 

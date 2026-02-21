@@ -273,14 +273,30 @@ router.get('/items', async (req, res) => {
       const freePredictions = predictions.filter(p => p.type === 'free');
       const boostPredictions = predictions.filter(p => p.type === 'boost');
       
-      // Calculate participants and winners
+      // Calculate participants (unique users)
       const freeParticipants = [...new Set(freePredictions.map(p => p.user.toString()))].length;
       const boostParticipants = [...new Set(boostPredictions.map(p => p.user.toString()))].length;
       
-      const freeWinners = freePredictions.filter(p => p.status === 'won').length;
-      const freeLosers = freePredictions.filter(p => p.status === 'lost').length;
-      const boostWinners = boostPredictions.filter(p => p.status === 'won').length;
-      const boostLosers = boostPredictions.filter(p => p.status === 'lost').length;
+      // Calculate winners and losers (unique users, not prediction count)
+      const freeWinningUsers = [...new Set(freePredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
+      const freeLosingUsers = [...new Set(freePredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
+      const freeWinners = freeWinningUsers.length;
+      const freeLosers = freeLosingUsers.length;
+      
+      const boostWinningUsers = [...new Set(boostPredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
+      const boostLosingUsers = [...new Set(boostPredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
+      const boostWinners = boostWinningUsers.length;
+      const boostLosers = boostLosingUsers.length;
+      
+      // Get display result (team name instead of TEAMA/TEAMB)
+      let displayResult = match.result || '';
+      if (displayResult === 'TeamA' || displayResult.toLowerCase() === 'teama') {
+        displayResult = match.teamA || 'Team A';
+      } else if (displayResult === 'TeamB' || displayResult.toLowerCase() === 'teamb') {
+        displayResult = match.teamB || 'Team B';
+      } else if (displayResult === 'Draw' || displayResult.toLowerCase() === 'draw') {
+        displayResult = 'Draw';
+      }
       
       // Get jackpot amounts (use original if resolved)
       const freeAmount = match.isResolved && match.originalFreeJackpotPool 
@@ -306,7 +322,7 @@ router.get('/items', async (req, res) => {
           losers: freeLosers,
           date: match.date,
           resolvedAt: match.isResolved ? match.updatedAt : null,
-          result: match.result,
+          result: displayResult,
         });
       }
       
@@ -326,7 +342,7 @@ router.get('/items', async (req, res) => {
           losers: boostLosers,
           date: match.date,
           resolvedAt: match.isResolved ? match.updatedAt : null,
-          result: match.result,
+          result: displayResult,
         });
       }
     }
@@ -338,14 +354,35 @@ router.get('/items', async (req, res) => {
       const freePredictions = predictions.filter(p => p.type === 'free');
       const boostPredictions = predictions.filter(p => p.type === 'boost');
       
-      // Calculate participants and winners
+      // Calculate participants (unique users)
       const freeParticipants = [...new Set(freePredictions.map(p => p.user.toString()))].length;
       const boostParticipants = [...new Set(boostPredictions.map(p => p.user.toString()))].length;
       
-      const freeWinners = freePredictions.filter(p => p.status === 'won').length;
-      const freeLosers = freePredictions.filter(p => p.status === 'lost').length;
-      const boostWinners = boostPredictions.filter(p => p.status === 'won').length;
-      const boostLosers = boostPredictions.filter(p => p.status === 'lost').length;
+      // Calculate winners and losers (unique users, not prediction count)
+      const freeWinningUsers = [...new Set(freePredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
+      const freeLosingUsers = [...new Set(freePredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
+      const freeWinners = freeWinningUsers.length;
+      const freeLosers = freeLosingUsers.length;
+      
+      const boostWinningUsers = [...new Set(boostPredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
+      const boostLosingUsers = [...new Set(boostPredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
+      const boostWinners = boostWinningUsers.length;
+      const boostLosers = boostLosingUsers.length;
+      
+      // Get display result (option name for polls)
+      let displayResult = poll.result || '';
+      if (poll.optionType === 'options' && poll.options) {
+        // For option-based polls, result is the option text
+        const winningOption = poll.options.find(opt => opt.text === poll.result);
+        if (winningOption) {
+          displayResult = winningOption.text;
+        }
+      } else {
+        // For Yes/No polls, keep YES/NO as is
+        if (displayResult.toUpperCase() === 'YES' || displayResult.toUpperCase() === 'NO') {
+          displayResult = displayResult.toUpperCase();
+        }
+      }
       
       // Get jackpot amounts (use original if resolved)
       const freeAmount = poll.isResolved && poll.originalFreeJackpotPool 
@@ -371,7 +408,7 @@ router.get('/items', async (req, res) => {
           losers: freeLosers,
           date: poll.createdAt,
           resolvedAt: poll.isResolved ? poll.updatedAt : null,
-          result: poll.result,
+          result: displayResult,
         });
       }
       
@@ -391,7 +428,7 @@ router.get('/items', async (req, res) => {
           losers: boostLosers,
           date: poll.createdAt,
           resolvedAt: poll.isResolved ? poll.updatedAt : null,
-          result: poll.result,
+          result: displayResult,
         });
       }
     }

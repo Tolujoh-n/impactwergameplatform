@@ -252,7 +252,16 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
     return result;
   };
   const resolvedOutcome = getDisplayResult();
-  const hasWon = prediction && prediction.status === 'won';
+  // Check if won: status is 'won' (more robust check like boost)
+  const hasWon = prediction && (
+    prediction.status === 'won' ||
+    (prediction.status === 'settled' && prediction.status !== 'lost') ||
+    (isResolved && prediction.outcome && resolvedOutcome && 
+     (prediction.outcome.trim().toUpperCase() === resolvedOutcome.trim().toUpperCase() ||
+      prediction.outcome.trim() === resolvedOutcome.trim() ||
+      (prediction.outcome.trim().toLowerCase() === 'yes' && resolvedOutcome.trim().toUpperCase() === 'YES') ||
+      (prediction.outcome.trim().toUpperCase() === 'YES' && resolvedOutcome.trim().toLowerCase() === 'yes')))
+  );
   const canPredict = !locked && !isResolved && (item.status === 'upcoming' || item.status === 'active');
   
   const getOutcomeOptions = () => {
@@ -345,7 +354,7 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
             <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
               <div className="text-sm text-green-600 dark:text-green-400 font-semibold mb-1">Free Jackpot Pool</div>
               <div className="text-xl font-bold text-green-700 dark:text-green-300">
-                {(item.freeJackpotPool || 0).toFixed(4)} ETH
+                {((item.isResolved && item.originalFreeJackpotPool) ? item.originalFreeJackpotPool : (item.freeJackpotPool || 0)).toFixed(4)} ETH
               </div>
             </div>
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
@@ -383,7 +392,7 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
               </p>
               {isResolved && (
                 <p className={`text-lg mb-2 ${hasWon ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                  Status: {prediction.status === 'won' ? '✅ Won' : '❌ Lost'}
+                  Status: {hasWon ? '✅ Won' : '❌ Lost'}
                 </p>
               )}
               {!isResolved && (
