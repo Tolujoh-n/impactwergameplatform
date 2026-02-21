@@ -75,9 +75,26 @@ router.get('/', async (req, res) => {
       return (b.correctPredictions || 0) - (a.correctPredictions || 0);
     });
     
-    const result = usersWithPredictions.slice(0, 100);
-    console.log(`[Leaderboard] Returning ${result.length} users`);
-    res.json(result);
+    // Pagination: 20 rows per page
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    
+    const result = usersWithPredictions.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(usersWithPredictions.length / limit);
+    
+    console.log(`[Leaderboard] Returning ${result.length} users (page ${page}/${totalPages})`);
+    res.json({
+      users: result,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalUsers: usersWithPredictions.length,
+        hasNext: endIndex < usersWithPredictions.length,
+        hasPrev: page > 1
+      }
+    });
   } catch (error) {
     console.error('Leaderboard error:', error);
     res.status(500).json({ message: error.message });
@@ -159,9 +176,26 @@ router.get('/cup/:cupSlug', async (req, res) => {
       return (b.correctPredictions || 0) - (a.correctPredictions || 0);
     });
     
-    const result = usersWithPredictions.slice(0, 100);
-    console.log(`[Leaderboard Cup] Returning ${result.length} users`);
-    res.json(result);
+    // Pagination: 20 rows per page
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    
+    const result = usersWithPredictions.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(usersWithPredictions.length / limit);
+    
+    console.log(`[Leaderboard Cup] Returning ${result.length} users (page ${page}/${totalPages})`);
+    res.json({
+      users: result,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalUsers: usersWithPredictions.length,
+        hasNext: endIndex < usersWithPredictions.length,
+        hasPrev: page > 1
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

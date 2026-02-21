@@ -254,10 +254,10 @@ const SuperAdmin = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {(match.freeJackpotPool || 0).toFixed(4)} ETH
+                          {((match.isResolved && match.originalFreeJackpotPool) ? match.originalFreeJackpotPool : (match.freeJackpotPool || 0)).toFixed(4)} ETH
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {(match.boostJackpotPool || 0).toFixed(4)} ETH
+                          {((match.isResolved && match.originalBoostJackpotPool) ? match.originalBoostJackpotPool : (match.boostJackpotPool || 0)).toFixed(4)} ETH
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                           {(match.platformFees || 0).toFixed(4)} ETH
@@ -316,10 +316,10 @@ const SuperAdmin = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {(poll.freeJackpotPool || 0).toFixed(4)} ETH
+                          {((poll.isResolved && poll.originalFreeJackpotPool) ? poll.originalFreeJackpotPool : (poll.freeJackpotPool || 0)).toFixed(4)} ETH
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {(poll.boostJackpotPool || 0).toFixed(4)} ETH
+                          {((poll.isResolved && poll.originalBoostJackpotPool) ? poll.originalBoostJackpotPool : (poll.boostJackpotPool || 0)).toFixed(4)} ETH
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                           {(poll.platformFees || 0).toFixed(4)} ETH

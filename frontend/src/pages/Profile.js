@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
@@ -11,12 +11,19 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('all'); // 'all', 'free', 'boost', 'market'
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'pending', 'won', 'lost', 'settled'
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   useEffect(() => {
     if (user) {
       fetchProfileData();
     }
   }, [user]);
+
+  // Reset to page 1 when filters change (must be before early returns)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, filterStatus]);
 
   const fetchProfileData = async () => {
     try {
@@ -71,6 +78,12 @@ const Profile = () => {
     if (filterStatus !== 'all' && p.status !== filterStatus) return false;
     return true;
   });
+
+  // Pagination for filtered predictions
+  const totalPages = Math.ceil(filteredPredictions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedPredictions = filteredPredictions.slice(startIndex, endIndex);
 
   const handleRowClick = (prediction) => {
     if (prediction.match) {
@@ -264,7 +277,7 @@ const Profile = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {filteredPredictions.map((prediction) => (
+                  {paginatedPredictions.map((prediction) => (
                     <tr 
                       key={prediction._id}
                       onClick={() => handleRowClick(prediction)}
@@ -322,6 +335,37 @@ const Profile = () => {
               {predictions.length === 0 
                 ? 'No predictions yet. Start predicting to see your history here!'
                 : 'No predictions match the selected filters.'}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className={`px-4 py-2 rounded-lg font-medium ${
+                  currentPage === 1
+                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
+              >
+                Previous
+              </button>
+              <span className="text-gray-600 dark:text-gray-400">
+                Page {currentPage} of {totalPages} ({filteredPredictions.length} total)
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className={`px-4 py-2 rounded-lg font-medium ${
+                  currentPage === totalPages
+                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
+              >
+                Next
+              </button>
             </div>
           )}
         </div>

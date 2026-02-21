@@ -504,13 +504,13 @@ const MatchCard = ({ match, featured = false, sponsored = false }) => {
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800">
           <div className="text-xs text-green-600 dark:text-green-400 font-semibold mb-1">Free Jackpot</div>
           <div className="text-sm font-bold text-green-700 dark:text-green-300">
-            {(match.freeJackpotPool || 0).toFixed(4)} ETH
+            {((match.isResolved && match.originalFreeJackpotPool) ? match.originalFreeJackpotPool : (match.freeJackpotPool || 0)).toFixed(4)} ETH
           </div>
         </div>
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
           <div className="text-xs text-blue-600 dark:text-blue-400 font-semibold mb-1">Boost Jackpot</div>
           <div className="text-sm font-bold text-blue-700 dark:text-blue-300">
-            {(match.boostJackpotPool || 0).toFixed(4)} ETH
+            {((match.isResolved && match.originalBoostJackpotPool) ? match.originalBoostJackpotPool : (match.boostJackpotPool || 0)).toFixed(4)} ETH
           </div>
         </div>
       </div>
@@ -633,13 +633,13 @@ const PollCard = ({ poll, sponsored = false, featured = false }) => {
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800">
           <div className="text-xs text-green-600 dark:text-green-400 font-semibold mb-1">Free Jackpot</div>
           <div className="text-sm font-bold text-green-700 dark:text-green-300">
-            {(poll.freeJackpotPool || 0).toFixed(4)} ETH
+            {((poll.isResolved && poll.originalFreeJackpotPool) ? poll.originalFreeJackpotPool : (poll.freeJackpotPool || 0)).toFixed(4)} ETH
           </div>
         </div>
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
           <div className="text-xs text-blue-600 dark:text-blue-400 font-semibold mb-1">Boost Jackpot</div>
           <div className="text-sm font-bold text-blue-700 dark:text-blue-300">
-            {(poll.boostJackpotPool || 0).toFixed(4)} ETH
+            {((poll.isResolved && poll.originalBoostJackpotPool) ? poll.originalBoostJackpotPool : (poll.boostJackpotPool || 0)).toFixed(4)} ETH
           </div>
         </div>
       </div>

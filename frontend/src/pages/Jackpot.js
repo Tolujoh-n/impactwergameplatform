@@ -10,6 +10,13 @@ const Jackpot = () => {
   const [jackpots, setJackpots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, free, boost
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    hasNext: false,
+    hasPrev: false
+  });
   const [userStats, setUserStats] = useState({
     jackpotBalance: 0,
     jackpotWithdrawn: 0,
@@ -22,18 +29,23 @@ const Jackpot = () => {
   const fetchJackpots = useCallback(async () => {
     setLoading(true);
     try {
-      const endpoint = cupSlug 
-        ? `/jackpots/cup/${cupSlug}?type=${filter}`
-        : `/jackpots?type=${filter}`;
+      // Use new per-match/poll endpoint
+      const page = pagination.currentPage || 1;
+      const endpoint = `/jackpots/items?type=${filter}&page=${page}`;
       const response = await api.get(endpoint);
-      setJackpots(response.data || []);
+      if (response.data.items) {
+        setJackpots(response.data.items || []);
+        setPagination(response.data.pagination || pagination);
+      } else {
+        setJackpots(response.data || []);
+      }
     } catch (error) {
       console.error('Error fetching jackpots:', error);
       setJackpots([]);
     } finally {
       setLoading(false);
     }
-  }, [cupSlug, filter]);
+  }, [filter, pagination.currentPage]);
 
   const fetchUserStats = useCallback(async () => {
     if (!user) {
@@ -179,7 +191,10 @@ const Jackpot = () => {
           {['all', 'free', 'boost'].map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
+              onClick={() => {
+                setFilter(f);
+                setPagination({...pagination, currentPage: 1}); // Reset to page 1 when filter changes
+              }}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 filter === f
                   ? 'bg-blue-500 text-white'
@@ -191,81 +206,137 @@ const Jackpot = () => {
           ))}
         </div>
 
-        {/* Jackpot Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Per-Match/Poll Jackpot Cards - 4 cards per row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {jackpots.map((jackpot) => (
             <div
               key={jackpot._id}
               className={`bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border-2 ${
-                jackpot.type === 'free' 
+                jackpot.status === 'resolved'
+                  ? 'border-gray-400 dark:border-gray-600'
+                  : jackpot.type === 'free' 
                   ? 'border-green-500' 
                   : 'border-purple-500'
               }`}
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                  {jackpot.name}
-                </h3>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                   jackpot.type === 'free'
                     ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
                     : 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200'
                 }`}>
                   {jackpot.type.toUpperCase()}
                 </span>
+                <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                  jackpot.status === 'resolved'
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                    : 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
+                }`}>
+                  {jackpot.status === 'resolved' ? 'Resolved' : 'Pending'}
+                </span>
               </div>
 
-              <div className="mb-4">
-                <div className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                  {jackpot.amount} {jackpot.type === 'free' ? 'Points' : 'ETH'}
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {jackpot.participants || 0} participants
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  Eligibility Requirements:
-                </div>
-                <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
-                  <li>• {jackpot.minStreak || 3}+ correct picks</li>
-                  <li>• {jackpot.minPredictions || 5}+ predictions</li>
-                  {jackpot.type === 'free' && (
-                    <li>• Active streak of {jackpot.minStreak || 3}+</li>
-                  )}
-                </ul>
-              </div>
-
-              <div className="mb-4">
-                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  Ends: {new Date(jackpot.endDate).toLocaleDateString()}
-                </div>
-              </div>
-
-              {user && (
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Your Eligibility: {jackpot.userEligible ? '✅ Eligible' : '❌ Not Eligible'}
-                  </div>
-                  {jackpot.userEligible && (
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      Your chances: {jackpot.userChance || 0}%
-                    </div>
-                  )}
-                </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-2">
+                {jackpot.title}
+              </h3>
+              
+              {jackpot.cup && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  {jackpot.cup.name}
+                </p>
               )}
 
-              <button className="w-full mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+              <div className="mb-4">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                  {jackpot.amount.toFixed(4)} ETH
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">
+                  Pool Amount
+                </div>
+              </div>
+
+              <div className="space-y-2 mb-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Participants:</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">{jackpot.participants || 0}</span>
+                </div>
+                {jackpot.status === 'resolved' && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Winners:</span>
+                      <span className="font-semibold text-green-600 dark:text-green-400">{jackpot.winners || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Losers:</span>
+                      <span className="font-semibold text-red-600 dark:text-red-400">{jackpot.losers || 0}</span>
+                    </div>
+                    {jackpot.result && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Result:</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{jackpot.result}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                {jackpot.status === 'resolved' && jackpot.resolvedAt
+                  ? `Resolved: ${new Date(jackpot.resolvedAt).toLocaleDateString()}`
+                  : `Date: ${new Date(jackpot.date).toLocaleDateString()}`
+                }
+              </div>
+
+              <button 
+                onClick={() => {
+                  // Navigate to match/poll detail page with type (boost/free)
+                  const path = jackpot.itemType === 'match' 
+                    ? `/match/${jackpot.itemId}/${jackpot.type}`
+                    : `/poll/${jackpot.itemId}/${jackpot.type}`;
+                  window.location.href = path;
+                }}
+                className="w-full mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+              >
                 View Details
               </button>
             </div>
           ))}
         </div>
 
-        {jackpots.length === 0 && (
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between">
+            <button
+              onClick={() => setPagination({...pagination, currentPage: pagination.currentPage - 1})}
+              disabled={!pagination.hasPrev}
+              className={`px-4 py-2 rounded-lg font-medium ${
+                pagination.hasPrev
+                  ? 'bg-blue-500 text-white hover:bg-blue-600'
+                  : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              Previous
+            </button>
+            <span className="text-gray-600 dark:text-gray-400">
+              Page {pagination.currentPage} of {pagination.totalPages} ({pagination.totalItems} total)
+            </span>
+            <button
+              onClick={() => setPagination({...pagination, currentPage: pagination.currentPage + 1})}
+              disabled={!pagination.hasNext}
+              className={`px-4 py-2 rounded-lg font-medium ${
+                pagination.hasNext
+                  ? 'bg-blue-500 text-white hover:bg-blue-600'
+                  : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              Next
+            </button>
+          </div>
+        )}
+
+        {jackpots.length === 0 && !loading && (
           <div className="text-center py-12">
-            <p className="text-gray-600 dark:text-gray-400">No jackpots available at the moment.</p>
+            <p className="text-gray-600 dark:text-gray-400">No jackpot participations available at the moment.</p>
           </div>
         )}
       </div>

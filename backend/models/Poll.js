@@ -99,6 +99,15 @@ const pollSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // Store original jackpot amounts before distribution (for display after resolution)
+  originalFreeJackpotPool: {
+    type: Number,
+    default: 0,
+  },
+  originalBoostJackpotPool: {
+    type: Number,
+    default: 0,
+  },
   // Platform fees collected
   platformFees: {
     type: Number,

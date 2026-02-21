@@ -555,6 +555,10 @@ router.post('/matches/:id/resolve', async (req, res) => {
     }
 
     // Distribute jackpots to winners
+    // Store original jackpot amounts before distribution (for display after resolution)
+    match.originalFreeJackpotPool = match.freeJackpotPool || 0;
+    match.originalBoostJackpotPool = match.boostJackpotPool || 0;
+    
     // Free jackpot: distribute to winning free predictions
     const freeWinningPredictions = predictions.filter(p => p.type === 'free' && p.status === 'won');
     if (freeWinningPredictions.length > 0 && match.freeJackpotPool > 0) {
@@ -569,7 +573,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
           await user.save();
         }
       }
-      // Reset jackpot pool after distribution
+      // Reset jackpot pool after distribution (but keep original amount for display)
       match.freeJackpotPool = 0;
     }
     
@@ -587,7 +591,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
           await user.save();
         }
       }
-      // Reset jackpot pool after distribution
+      // Reset jackpot pool after distribution (but keep original amount for display)
       match.boostJackpotPool = 0;
     }
     
@@ -941,6 +945,10 @@ router.post('/polls/:id/resolve', async (req, res) => {
       }
     }
 
+    // Store original jackpot amounts before distribution (for display after resolution)
+    poll.originalFreeJackpotPool = poll.freeJackpotPool || 0;
+    poll.originalBoostJackpotPool = poll.boostJackpotPool || 0;
+    
     // Distribute jackpots to winners
     // Free jackpot: distribute to winning free predictions
     const freeWinningPredictions = predictions.filter(p => p.type === 'free' && p.status === 'won');
@@ -956,11 +964,9 @@ router.post('/polls/:id/resolve', async (req, res) => {
           await user.save();
         }
       }
-      // Only reset jackpot pool after successful distribution
-      // Keep pool visible if no winners (pool remains for next resolution)
+      // Reset jackpot pool after distribution (but keep original amount for display)
       poll.freeJackpotPool = 0;
     }
-    // Note: If no winners, freeJackpotPool remains unchanged (stays visible)
     
     // Boost jackpot: distribute to winning boost predictions
     const boostWinningPredictions = boostPredictions.filter(p => p.status === 'won');
@@ -976,11 +982,9 @@ router.post('/polls/:id/resolve', async (req, res) => {
           await user.save();
         }
       }
-      // Only reset jackpot pool after successful distribution
-      // Keep pool visible if no winners (pool remains for next resolution)
+      // Reset jackpot pool after distribution (but keep original amount for display)
       poll.boostJackpotPool = 0;
     }
-    // Note: If no winners, boostJackpotPool remains unchanged (stays visible)
 
     // Award points to winning free predictions
     const freeWinningPredictionsForPoints = predictions.filter(p => p.type === 'free' && p.status === 'won');

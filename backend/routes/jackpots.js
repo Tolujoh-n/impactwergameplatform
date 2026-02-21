@@ -252,6 +252,180 @@ async function getPollIds(cupId) {
   return polls.map(p => p._id);
 }
 
+// Get per-match/poll jackpot cards
+router.get('/items', async (req, res) => {
+  try {
+    const { type, page = 1 } = req.query;
+    const pageNum = parseInt(page) || 1;
+    const limit = 12;
+    const skip = (pageNum - 1) * limit;
+    
+    // Get all matches and polls with predictions
+    const matches = await Match.find({}).populate('cup', 'name slug').sort({ createdAt: -1 });
+    const polls = await Poll.find({}).populate('cup', 'name slug').sort({ createdAt: -1 });
+    
+    const jackpotItems = [];
+    
+    // Process matches
+    for (const match of matches) {
+      // Get predictions for this match
+      const predictions = await Prediction.find({ match: match._id });
+      const freePredictions = predictions.filter(p => p.type === 'free');
+      const boostPredictions = predictions.filter(p => p.type === 'boost');
+      
+      // Calculate participants and winners
+      const freeParticipants = [...new Set(freePredictions.map(p => p.user.toString()))].length;
+      const boostParticipants = [...new Set(boostPredictions.map(p => p.user.toString()))].length;
+      
+      const freeWinners = freePredictions.filter(p => p.status === 'won').length;
+      const freeLosers = freePredictions.filter(p => p.status === 'lost').length;
+      const boostWinners = boostPredictions.filter(p => p.status === 'won').length;
+      const boostLosers = boostPredictions.filter(p => p.status === 'lost').length;
+      
+      // Get jackpot amounts (use original if resolved)
+      const freeAmount = match.isResolved && match.originalFreeJackpotPool 
+        ? match.originalFreeJackpotPool 
+        : (match.freeJackpotPool || 0);
+      const boostAmount = match.isResolved && match.originalBoostJackpotPool 
+        ? match.originalBoostJackpotPool 
+        : (match.boostJackpotPool || 0);
+      
+      // Add free jackpot card if there are predictions or pool
+      if (freeParticipants > 0 || freeAmount > 0) {
+        jackpotItems.push({
+          _id: `match-${match._id}-free`,
+          itemId: match._id,
+          itemType: 'match',
+          type: 'free',
+          title: match.teamA + ' vs ' + match.teamB,
+          cup: match.cup ? { name: match.cup.name, slug: match.cup.slug } : null,
+          status: match.isResolved ? 'resolved' : 'pending',
+          amount: freeAmount,
+          participants: freeParticipants,
+          winners: freeWinners,
+          losers: freeLosers,
+          date: match.date,
+          resolvedAt: match.isResolved ? match.updatedAt : null,
+          result: match.result,
+        });
+      }
+      
+      // Add boost jackpot card if there are predictions or pool
+      if (boostParticipants > 0 || boostAmount > 0) {
+        jackpotItems.push({
+          _id: `match-${match._id}-boost`,
+          itemId: match._id,
+          itemType: 'match',
+          type: 'boost',
+          title: match.teamA + ' vs ' + match.teamB,
+          cup: match.cup ? { name: match.cup.name, slug: match.cup.slug } : null,
+          status: match.isResolved ? 'resolved' : 'pending',
+          amount: boostAmount,
+          participants: boostParticipants,
+          winners: boostWinners,
+          losers: boostLosers,
+          date: match.date,
+          resolvedAt: match.isResolved ? match.updatedAt : null,
+          result: match.result,
+        });
+      }
+    }
+    
+    // Process polls
+    for (const poll of polls) {
+      // Get predictions for this poll
+      const predictions = await Prediction.find({ poll: poll._id });
+      const freePredictions = predictions.filter(p => p.type === 'free');
+      const boostPredictions = predictions.filter(p => p.type === 'boost');
+      
+      // Calculate participants and winners
+      const freeParticipants = [...new Set(freePredictions.map(p => p.user.toString()))].length;
+      const boostParticipants = [...new Set(boostPredictions.map(p => p.user.toString()))].length;
+      
+      const freeWinners = freePredictions.filter(p => p.status === 'won').length;
+      const freeLosers = freePredictions.filter(p => p.status === 'lost').length;
+      const boostWinners = boostPredictions.filter(p => p.status === 'won').length;
+      const boostLosers = boostPredictions.filter(p => p.status === 'lost').length;
+      
+      // Get jackpot amounts (use original if resolved)
+      const freeAmount = poll.isResolved && poll.originalFreeJackpotPool 
+        ? poll.originalFreeJackpotPool 
+        : (poll.freeJackpotPool || 0);
+      const boostAmount = poll.isResolved && poll.originalBoostJackpotPool 
+        ? poll.originalBoostJackpotPool 
+        : (poll.boostJackpotPool || 0);
+      
+      // Add free jackpot card if there are predictions or pool
+      if (freeParticipants > 0 || freeAmount > 0) {
+        jackpotItems.push({
+          _id: `poll-${poll._id}-free`,
+          itemId: poll._id,
+          itemType: 'poll',
+          type: 'free',
+          title: poll.question,
+          cup: poll.cup ? { name: poll.cup.name, slug: poll.cup.slug } : null,
+          status: poll.isResolved ? 'resolved' : 'pending',
+          amount: freeAmount,
+          participants: freeParticipants,
+          winners: freeWinners,
+          losers: freeLosers,
+          date: poll.createdAt,
+          resolvedAt: poll.isResolved ? poll.updatedAt : null,
+          result: poll.result,
+        });
+      }
+      
+      // Add boost jackpot card if there are predictions or pool
+      if (boostParticipants > 0 || boostAmount > 0) {
+        jackpotItems.push({
+          _id: `poll-${poll._id}-boost`,
+          itemId: poll._id,
+          itemType: 'poll',
+          type: 'boost',
+          title: poll.question,
+          cup: poll.cup ? { name: poll.cup.name, slug: poll.cup.slug } : null,
+          status: poll.isResolved ? 'resolved' : 'pending',
+          amount: boostAmount,
+          participants: boostParticipants,
+          winners: boostWinners,
+          losers: boostLosers,
+          date: poll.createdAt,
+          resolvedAt: poll.isResolved ? poll.updatedAt : null,
+          result: poll.result,
+        });
+      }
+    }
+    
+    // Filter by type if specified
+    let filtered = jackpotItems;
+    if (type && type !== 'all') {
+      filtered = jackpotItems.filter(item => item.type === type);
+    }
+    
+    // Sort by date (most recent first)
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // Pagination
+    const total = filtered.length;
+    const totalPages = Math.ceil(total / limit);
+    const paginated = filtered.slice(skip, skip + limit);
+    
+    res.json({
+      items: paginated,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalItems: total,
+        hasNext: skip + limit < total,
+        hasPrev: pageNum > 1
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching jackpot items:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Get user jackpot stats
 router.get('/user/stats', auth, async (req, res) => {
   try {
