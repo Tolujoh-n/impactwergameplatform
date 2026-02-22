@@ -416,14 +416,6 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
                   Predictions are locked for this match/poll
                 </p>
               )}
-              {hasWon && isResolved && (
-                <button
-                  onClick={onClaim}
-                  className="mt-4 px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                >
-                  Claim Rewards
-                </button>
-              )}
             </div>
           ) : isResolved ? (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 mb-6">
@@ -646,7 +638,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
             <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
               <div className="text-sm text-green-600 dark:text-green-400 font-semibold mb-1">Free Jackpot Pool</div>
               <div className="text-xl font-bold text-green-700 dark:text-green-300">
-                {(item.freeJackpotPool || 0).toFixed(4)} ETH
+                {((item.isResolved && item.originalFreeJackpotPool) ? item.originalFreeJackpotPool : (item.freeJackpotPool || 0)).toFixed(4)} ETH
               </div>
             </div>
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
@@ -686,7 +678,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                 Your Prediction: {prediction.outcome}
               </p>
               <p className="text-gray-600 dark:text-gray-400 mb-2">
-                Staked Amount: {isResolved && !hasWon ? '0.0000' : (prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
+                Staked Amount: {(prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
               </p>
               {isResolved && (
                 <>
