@@ -19,14 +19,15 @@ router.get('/', async (req, res) => {
     // Calculate actual streaks from predictions
     const usersWithStreaks = [];
     for (const user of users) {
-      const predictions = await Prediction.find({ 
+      // Get recent predictions for streak calculation (limit to 100 for performance)
+      const recentPredictions = await Prediction.find({ 
         user: user._id,
         type: 'free'
       }).sort({ createdAt: -1 }).limit(100);
       
       // Calculate current streak (consecutive wins from most recent)
       let currentStreak = 0;
-      for (const prediction of predictions) {
+      for (const prediction of recentPredictions) {
         if (prediction.status === 'won') {
           currentStreak++;
         } else if (prediction.status === 'lost') {
@@ -34,13 +35,22 @@ router.get('/', async (req, res) => {
         }
       }
       
+      // Calculate correct predictions count (all free predictions with status 'won', not just recent 100)
+      const allFreePredictions = await Prediction.find({ 
+        user: user._id,
+        type: 'free',
+        status: 'won'
+      });
+      const correctPredictions = allFreePredictions.length;
+      
       const finalStreak = Math.max(currentStreak, user.streak || 0);
       
       // Include users with at least 1 streak OR users with predictions (even if streak is 0)
-      if (finalStreak > 0 || predictions.length > 0) {
+      if (finalStreak > 0 || recentPredictions.length > 0) {
         usersWithStreaks.push({
           ...user.toObject(),
-          streak: finalStreak
+          streak: finalStreak,
+          correctPredictions: correctPredictions
         });
       }
     }
@@ -121,9 +131,17 @@ router.get('/cup/:cupSlug', async (req, res) => {
     const users = await User.find({ _id: { $in: userIds } })
       .select('username email walletAddress streak correctPredictions totalPredictions points');
     
-    const result = users.map(user => ({
-      ...user.toObject(),
-      streak: userStreaks[user._id.toString()] || 0,
+    // Calculate correct predictions for each user
+    const result = await Promise.all(users.map(async (user) => {
+      // Count correct free predictions for this cup
+      const userPreds = predictions.filter(p => p.user.toString() === user._id.toString());
+      const correctPredictions = userPreds.filter(p => p.status === 'won').length;
+      
+      return {
+        ...user.toObject(),
+        streak: userStreaks[user._id.toString()] || 0,
+        correctPredictions: correctPredictions
+      };
     }));
     
     result.sort((a, b) => b.streak - a.streak);
