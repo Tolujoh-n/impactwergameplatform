@@ -32,6 +32,11 @@ const predictionSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // Store original stake before resolution (for display after loss)
+  originalStake: {
+    type: Number,
+    default: 0,
+  },
   // For market: track shares owned
   shares: {
     type: Number,

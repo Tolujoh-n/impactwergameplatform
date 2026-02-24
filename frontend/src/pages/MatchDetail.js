@@ -678,7 +678,9 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                 Your Prediction: {prediction.outcome}
               </p>
               <p className="text-gray-600 dark:text-gray-400 mb-2">
-                Staked Amount: {(prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
+                Staked Amount: {isResolved && !hasWon && prediction.originalStake 
+                  ? prediction.originalStake.toFixed(4) 
+                  : (prediction.totalStake || prediction.amount || 0).toFixed(4)} ETH
               </p>
               {isResolved && (
                 <>
@@ -1025,6 +1027,55 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     return result;
   };
   const resolvedOutcome = getDisplayResult();
+  
+  // Helper function to map outcome to display name (for claim buttons)
+  const getDisplayOutcome = (outcome) => {
+    if (!outcome) return '';
+    const outcomeStr = outcome.trim();
+    if (isPoll) {
+      // For polls, check if it's an option
+      if (itemData.optionType === 'options' && itemData.options) {
+        const option = itemData.options.find(opt => opt.text === outcomeStr);
+        if (option) return option.text;
+      }
+      // For Yes/No polls, return as is (YES/NO)
+      return outcomeStr.toUpperCase();
+    } else {
+      // For matches, map TeamA/TeamB/Draw to actual names
+      if (outcomeStr === 'TeamA' || outcomeStr.toLowerCase() === 'teama') {
+        return itemData.teamA || 'Team A';
+      } else if (outcomeStr === 'TeamB' || outcomeStr.toLowerCase() === 'teamb') {
+        return itemData.teamB || 'Team B';
+      } else if (outcomeStr === 'Draw' || outcomeStr.toLowerCase() === 'draw') {
+        return 'Draw';
+      }
+      // If already a team name, return as is
+      return outcomeStr;
+    }
+  };
+  
+  // Helper function to normalize outcome to price key (for price lookups)
+  const getPriceKey = (outcome) => {
+    if (!outcome) return '';
+    const outcomeStr = outcome.trim().toLowerCase();
+    if (isPoll) {
+      // For polls, return as is (option text for option-based, yes/no for Yes/No)
+      if (itemData.optionType === 'options' && itemData.options) {
+        // For option-based polls, return the exact option text
+        const option = itemData.options.find(opt => opt.text.toLowerCase() === outcomeStr || opt.text === outcome);
+        return option ? option.text : outcome;
+      } else {
+        // For Yes/No polls, normalize to lowercase
+        return outcomeStr === 'yes' ? 'yes' : outcomeStr === 'no' ? 'no' : outcomeStr;
+      }
+    } else {
+      // For matches, normalize to lowercase keys used in prices state
+      if (outcomeStr === 'teama' || outcomeStr === 'teama') return 'teamA';
+      if (outcomeStr === 'teamb' || outcomeStr === 'teamb') return 'teamB';
+      if (outcomeStr === 'draw') return 'draw';
+      return outcomeStr;
+    }
+  };
   
   // Calculate winning predictions
   const winningPredictions = Object.values(predictions).filter(pred => 
@@ -1727,7 +1778,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                         <span className="text-gray-600 dark:text-gray-400">Total Value:</span>
                         <span className="font-medium text-gray-900 dark:text-white">
                           {(() => {
-                            // Calculate current ETH value of all holdings
+                            // Calculate current ETH value of all holdings using current prices
+                            // Total Value = sum of (userShares * currentPricePerShare) for each outcome
                             let totalValue = 0;
                             
                             if (isPoll) {
@@ -1737,11 +1789,10 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                                   const optionPrediction = predictions[opt.text];
                                   if (optionPrediction && optionPrediction.shares > 0) {
                                     const userShares = optionPrediction.shares || 0;
-                                    const totalSharesForOption = opt.shares || 0;
-                                    const optionLiquidity = opt.liquidity || 0;
-                                    if (totalSharesForOption > 0) {
-                                      totalValue += (userShares / totalSharesForOption) * optionLiquidity;
-                                    }
+                                    const priceKey = getPriceKey(opt.text);
+                                    const currentPrice = prices[priceKey] || prices[opt.text] || 0;
+                                    // Value = shares * price per share
+                                    totalValue += userShares * currentPrice;
                                   }
                                 });
                               } else {
@@ -1751,54 +1802,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                                 
                                 if (yesPrediction.shares > 0) {
                                   const userShares = yesPrediction.shares || 0;
-                                  const totalShares = itemData.marketYesShares || 0;
-                                  const liquidity = itemData.marketYesLiquidity || 0;
-                                  if (totalShares > 0) {
-                                    totalValue += (userShares / totalShares) * liquidity;
-                                  }
+                                  const priceKey = getPriceKey('yes');
+                                  const currentPrice = prices[priceKey] || 0;
+                                  totalValue += userShares * currentPrice;
                                 }
                                 
                                 if (noPrediction.shares > 0) {
                                   const userShares = noPrediction.shares || 0;
-                                  const totalShares = itemData.marketNoShares || 0;
-                                  const liquidity = itemData.marketNoLiquidity || 0;
-                                  if (totalShares > 0) {
-                                    totalValue += (userShares / totalShares) * liquidity;
-                                  }
+                                  const priceKey = getPriceKey('no');
+                                  const currentPrice = prices[priceKey] || 0;
+                                  totalValue += userShares * currentPrice;
                                 }
                               }
                             } else {
-                              // Match
-                              const teamAPrediction = predictions['TEAMA'] || predictions['TeamA'] || predictions['teamA'] || {};
-                              const teamBPrediction = predictions['TEAMB'] || predictions['TeamB'] || predictions['teamB'] || {};
-                              const drawPrediction = predictions['DRAW'] || predictions['Draw'] || predictions['draw'] || {};
-                              
-                              if (teamAPrediction.shares > 0) {
-                                const userShares = teamAPrediction.shares || 0;
-                                const totalShares = itemData.marketTeamAShares || 0;
-                                const liquidity = itemData.marketTeamALiquidity || 0;
-                                if (totalShares > 0) {
-                                  totalValue += (userShares / totalShares) * liquidity;
+                              // Match - iterate through all predictions and calculate value
+                              Object.values(predictions).forEach(pred => {
+                                if (pred && pred.shares > 0) {
+                                  const userShares = pred.shares || 0;
+                                  const priceKey = getPriceKey(pred.outcome);
+                                  const currentPrice = prices[priceKey] || 0;
+                                  totalValue += userShares * currentPrice;
                                 }
-                              }
-                              
-                              if (drawPrediction.shares > 0) {
-                                const userShares = drawPrediction.shares || 0;
-                                const totalShares = itemData.marketDrawShares || 0;
-                                const liquidity = itemData.marketDrawLiquidity || 0;
-                                if (totalShares > 0) {
-                                  totalValue += (userShares / totalShares) * liquidity;
-                                }
-                              }
-                              
-                              if (teamBPrediction.shares > 0) {
-                                const userShares = teamBPrediction.shares || 0;
-                                const totalShares = itemData.marketTeamBShares || 0;
-                                const liquidity = itemData.marketTeamBLiquidity || 0;
-                                if (totalShares > 0) {
-                                  totalValue += (userShares / totalShares) * liquidity;
-                                }
-                              }
+                              });
                             }
                             
                             return totalValue.toFixed(4);
@@ -1818,7 +1843,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                               <div key={idx} className="mb-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Reward claimed</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                  {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
+                                  {getDisplayOutcome(pred.outcome)}: {(pred.payout || 0).toFixed(4)} ETH
                                 </p>
                               </div>
                             );
@@ -1837,7 +1862,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                               }}
                               className="w-full mb-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                             >
-                              Claim {pred.outcome}: {(pred.payout || 0).toFixed(4)} ETH
+                              Claim {getDisplayOutcome(pred.outcome)}: {(pred.payout || 0).toFixed(4)} ETH
                             </button>
                           );
                         })
@@ -2384,7 +2409,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                       <span className="text-gray-600 dark:text-gray-400">Total Value:</span>
                       <span className="font-medium text-gray-900 dark:text-white">
                         {(() => {
-                          // Calculate current ETH value of all holdings
+                          // Calculate current ETH value of all holdings using current prices
+                          // Total Value = sum of (userShares * currentPricePerShare) for each outcome
                           let totalValue = 0;
                           
                           if (isPoll) {
@@ -2394,11 +2420,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                                 const optionPrediction = predictions[opt.text];
                                 if (optionPrediction && optionPrediction.shares > 0) {
                                   const userShares = optionPrediction.shares || 0;
-                                  const totalSharesForOption = opt.shares || 0;
-                                  const optionLiquidity = opt.liquidity || 0;
-                                  if (totalSharesForOption > 0) {
-                                    totalValue += (userShares / totalSharesForOption) * optionLiquidity;
-                                  }
+                                  const currentPrice = prices[opt.text] || 0;
+                                  // Value = shares * price per share
+                                  totalValue += userShares * currentPrice;
                                 }
                               });
                             } else {
@@ -2408,20 +2432,14 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                               
                               if (yesPrediction.shares > 0) {
                                 const userShares = yesPrediction.shares || 0;
-                                const totalShares = itemData.marketYesShares || 0;
-                                const liquidity = itemData.marketYesLiquidity || 0;
-                                if (totalShares > 0) {
-                                  totalValue += (userShares / totalShares) * liquidity;
-                                }
+                                const currentPrice = prices['yes'] || prices['YES'] || 0;
+                                totalValue += userShares * currentPrice;
                               }
                               
                               if (noPrediction.shares > 0) {
                                 const userShares = noPrediction.shares || 0;
-                                const totalShares = itemData.marketNoShares || 0;
-                                const liquidity = itemData.marketNoLiquidity || 0;
-                                if (totalShares > 0) {
-                                  totalValue += (userShares / totalShares) * liquidity;
-                                }
+                                const currentPrice = prices['no'] || prices['NO'] || 0;
+                                totalValue += userShares * currentPrice;
                               }
                             }
                           } else {
@@ -2432,29 +2450,20 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                             
                             if (teamAPrediction.shares > 0) {
                               const userShares = teamAPrediction.shares || 0;
-                              const totalShares = itemData.marketTeamAShares || 0;
-                              const liquidity = itemData.marketTeamALiquidity || 0;
-                              if (totalShares > 0) {
-                                totalValue += (userShares / totalShares) * liquidity;
-                              }
+                              const currentPrice = prices['teamA'] || prices['TeamA'] || prices['TEAMA'] || 0;
+                              totalValue += userShares * currentPrice;
                             }
                             
                             if (drawPrediction.shares > 0) {
                               const userShares = drawPrediction.shares || 0;
-                              const totalShares = itemData.marketDrawShares || 0;
-                              const liquidity = itemData.marketDrawLiquidity || 0;
-                              if (totalShares > 0) {
-                                totalValue += (userShares / totalShares) * liquidity;
-                              }
+                              const currentPrice = prices['draw'] || prices['Draw'] || prices['DRAW'] || 0;
+                              totalValue += userShares * currentPrice;
                             }
                             
                             if (teamBPrediction.shares > 0) {
                               const userShares = teamBPrediction.shares || 0;
-                              const totalShares = itemData.marketTeamBShares || 0;
-                              const liquidity = itemData.marketTeamBLiquidity || 0;
-                              if (totalShares > 0) {
-                                totalValue += (userShares / totalShares) * liquidity;
-                              }
+                              const currentPrice = prices['teamB'] || prices['TeamB'] || prices['TEAMB'] || 0;
+                              totalValue += userShares * currentPrice;
                             }
                           }
                           

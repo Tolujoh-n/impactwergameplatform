@@ -530,16 +530,20 @@ router.post('/matches/:id/resolve', async (req, res) => {
       if (totalWinningStake > 0) {
         // Distribute losing stakes proportionally to winners
         for (const prediction of boostPredictions) {
+          const originalStake = originalStakes.get(prediction._id.toString()) || 0;
+          // Store original stake before any modifications (for display after resolution)
+          prediction.originalStake = originalStake;
+          
           if (prediction.status === 'won') {
-            const userStake = originalStakes.get(prediction._id.toString()) || 0;
             // Calculate user's share of losing stakes based on their stake proportion
             const shareOfLosingStakes = totalLosingStakes > 0 
-              ? (userStake / totalWinningStake) * totalLosingStakes 
+              ? (originalStake / totalWinningStake) * totalLosingStakes 
               : 0;
             // Payout = original stake + share of losing stakes
-            prediction.payout = userStake + shareOfLosingStakes;
+            prediction.payout = originalStake + shareOfLosingStakes;
           } else {
             // Losing predictions get 0 (their stake goes to winners)
+            // But keep originalStake for display purposes
             prediction.payout = 0;
             prediction.amount = 0;
             prediction.totalStake = 0;
@@ -550,6 +554,9 @@ router.post('/matches/:id/resolve', async (req, res) => {
       } else {
         // If no winning stake, all predictions get 0
         for (const prediction of boostPredictions) {
+          const originalStake = originalStakes.get(prediction._id.toString()) || 0;
+          // Store original stake before zeroing (for display after resolution)
+          prediction.originalStake = originalStake;
           prediction.payout = 0;
           prediction.amount = 0;
           prediction.totalStake = 0;
@@ -926,16 +933,20 @@ router.post('/polls/:id/resolve', async (req, res) => {
       if (totalWinningStake > 0) {
         // Distribute losing stakes proportionally to winners
         for (const prediction of boostPredictions) {
+          const originalStake = originalStakes.get(prediction._id.toString()) || 0;
+          // Store original stake before any modifications (for display after resolution)
+          prediction.originalStake = originalStake;
+          
           if (prediction.status === 'won') {
-            const userStake = originalStakes.get(prediction._id.toString()) || 0;
             // Calculate user's share of losing stakes based on their stake proportion
             const shareOfLosingStakes = totalLosingStakes > 0 
-              ? (userStake / totalWinningStake) * totalLosingStakes 
+              ? (originalStake / totalWinningStake) * totalLosingStakes 
               : 0;
             // Payout = original stake + share of losing stakes
-            prediction.payout = userStake + shareOfLosingStakes;
+            prediction.payout = originalStake + shareOfLosingStakes;
           } else {
             // Losing predictions get 0 (their stake goes to winners)
+            // But keep originalStake for display purposes
             prediction.payout = 0;
             prediction.amount = 0;
             prediction.totalStake = 0;
@@ -946,6 +957,9 @@ router.post('/polls/:id/resolve', async (req, res) => {
       } else {
         // If no winning stake, all predictions get 0
         for (const prediction of boostPredictions) {
+          const originalStake = originalStakes.get(prediction._id.toString()) || 0;
+          // Store original stake before zeroing (for display after resolution)
+          prediction.originalStake = originalStake;
           prediction.payout = 0;
           prediction.amount = 0;
           prediction.totalStake = 0;

@@ -222,12 +222,12 @@ const Profile = () => {
                 <span className="text-gray-600 dark:text-gray-400">Total</span>
                 <span className="font-semibold text-gray-900 dark:text-white">{marketPredictions.length}</span>
               </div>
-              <div className="flex justify-between">
+              {/* <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Total Volume</span>
                 <span className="font-semibold text-gray-900 dark:text-white">
                   {marketPredictions.reduce((sum, p) => sum + (p.amount || 0), 0).toFixed(3)} ETH
                 </span>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

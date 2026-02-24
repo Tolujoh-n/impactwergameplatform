@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../components/Notification';
 
 const Jackpot = () => {
   const [searchParams] = useSearchParams();
   const cupSlug = searchParams.get('cup');
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [jackpots, setJackpots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, free, boost
@@ -80,23 +82,23 @@ const Jackpot = () => {
 
   const handleWithdraw = async () => {
     if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
-      alert('Please enter a valid amount');
+      showNotification('Please enter a valid amount', 'warning');
       return;
     }
     
     if (parseFloat(withdrawAmount) > (userStats?.jackpotBalance || 0)) {
-      alert('Insufficient balance');
+      showNotification('Insufficient balance', 'error');
       return;
     }
 
     setWithdrawing(true);
     try {
       const response = await api.post('/jackpots/withdraw', { amount: withdrawAmount });
-      alert('Withdrawal successful!');
+      showNotification('Withdrawal successful!', 'success');
       setWithdrawAmount('');
       await fetchUserStats();
     } catch (error) {
-      alert(error.response?.data?.message || 'Withdrawal failed');
+      showNotification(error.response?.data?.message || 'Withdrawal failed', 'error');
     } finally {
       setWithdrawing(false);
     }

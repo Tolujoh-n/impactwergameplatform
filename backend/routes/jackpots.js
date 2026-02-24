@@ -278,13 +278,24 @@ router.get('/items', async (req, res) => {
       const boostParticipants = [...new Set(boostPredictions.map(p => p.user.toString()))].length;
       
       // Calculate winners and losers (unique users, not prediction count)
+      // For free predictions: status === 'won' or 'lost'
+      // For boost predictions: after resolution, status is 'settled', so check payout (winners have payout > 0, losers have payout = 0 and originalStake > 0)
       const freeWinningUsers = [...new Set(freePredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
       const freeLosingUsers = [...new Set(freePredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
       const freeWinners = freeWinningUsers.length;
       const freeLosers = freeLosingUsers.length;
       
-      const boostWinningUsers = [...new Set(boostPredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
-      const boostLosingUsers = [...new Set(boostPredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
+      // For boost: winners have payout > 0, losers have payout = 0 and (originalStake > 0 or totalStake > 0 or amount > 0)
+      const boostWinningUsers = [...new Set(boostPredictions.filter(p => {
+        if (p.status === 'won') return true;
+        if (p.status === 'settled' && (p.payout || 0) > 0) return true;
+        return false;
+      }).map(p => p.user.toString()))];
+      const boostLosingUsers = [...new Set(boostPredictions.filter(p => {
+        if (p.status === 'lost') return true;
+        if (p.status === 'settled' && (p.payout || 0) === 0 && ((p.originalStake || 0) > 0 || (p.totalStake || 0) > 0 || (p.amount || 0) > 0)) return true;
+        return false;
+      }).map(p => p.user.toString()))];
       const boostWinners = boostWinningUsers.length;
       const boostLosers = boostLosingUsers.length;
       
@@ -359,13 +370,24 @@ router.get('/items', async (req, res) => {
       const boostParticipants = [...new Set(boostPredictions.map(p => p.user.toString()))].length;
       
       // Calculate winners and losers (unique users, not prediction count)
+      // For free predictions: status === 'won' or 'lost'
+      // For boost predictions: after resolution, status is 'settled', so check payout (winners have payout > 0, losers have payout = 0 and originalStake > 0)
       const freeWinningUsers = [...new Set(freePredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
       const freeLosingUsers = [...new Set(freePredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
       const freeWinners = freeWinningUsers.length;
       const freeLosers = freeLosingUsers.length;
       
-      const boostWinningUsers = [...new Set(boostPredictions.filter(p => p.status === 'won').map(p => p.user.toString()))];
-      const boostLosingUsers = [...new Set(boostPredictions.filter(p => p.status === 'lost').map(p => p.user.toString()))];
+      // For boost: winners have payout > 0, losers have payout = 0 and (originalStake > 0 or totalStake > 0 or amount > 0)
+      const boostWinningUsers = [...new Set(boostPredictions.filter(p => {
+        if (p.status === 'won') return true;
+        if (p.status === 'settled' && (p.payout || 0) > 0) return true;
+        return false;
+      }).map(p => p.user.toString()))];
+      const boostLosingUsers = [...new Set(boostPredictions.filter(p => {
+        if (p.status === 'lost') return true;
+        if (p.status === 'settled' && (p.payout || 0) === 0 && ((p.originalStake || 0) > 0 || (p.totalStake || 0) > 0 || (p.amount || 0) > 0)) return true;
+        return false;
+      }).map(p => p.user.toString()))];
       const boostWinners = boostWinningUsers.length;
       const boostLosers = boostLosingUsers.length;
       
