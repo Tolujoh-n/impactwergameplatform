@@ -143,24 +143,8 @@ const Admin = () => {
   };
 
   const handleCreateMatch = async (matchData) => {
-    // Check wallet connection
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-    
     try {
-      // Create market on blockchain first
+      // Create market on blockchain first (auto-connects wallet and switches network if needed)
       const options = ['TeamA', 'Draw', 'TeamB'];
       const marketId = await createMarket(false, options);
       showNotification(`Market created on blockchain! Market ID: ${marketId}`, 'success');
@@ -215,22 +199,8 @@ const Admin = () => {
   };
 
   const handleAddMatchLiquidity = async (matchId, liquidity) => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-    
     try {
+      // Auto-connects wallet and switches network if needed
       // Get match to get marketId
       const matchResponse = await api.get(`/matches/${matchId}`);
       const match = matchResponse.data;
@@ -264,22 +234,8 @@ const Admin = () => {
   };
 
   const handleResolveMatch = async (matchId, result) => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-    
     try {
+      // Auto-connects wallet and switches network if needed
       // Get match to get marketId
       const matchResponse = await api.get(`/matches/${matchId}`);
       const match = matchResponse.data;
@@ -314,23 +270,8 @@ const Admin = () => {
   };
 
   const handleCreatePoll = async (pollData) => {
-    // Check wallet connection
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-    
     try {
+      // Auto-connects wallet and switches network if needed
       // Create market on blockchain first
       let options = [];
       if (pollData.optionType === 'options' && pollData.options) {
@@ -382,22 +323,8 @@ const Admin = () => {
   };
 
   const handleResolvePoll = async (pollId, result, optionIndex) => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-    
     try {
+      // Auto-connects wallet and switches network if needed
       // Get poll to get marketId
       const pollResponse = await api.get(`/polls/${pollId}`);
       const poll = pollResponse.data;
@@ -451,22 +378,8 @@ const Admin = () => {
   };
 
   const handleAddPollLiquidity = async (pollId, liquidity) => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-    
     try {
+      // Auto-connects wallet and switches network if needed
       // Get poll to get marketId
       const pollResponse = await api.get(`/polls/${pollId}`);
       const poll = pollResponse.data;
@@ -586,22 +499,8 @@ const Admin = () => {
   };
 
   const handleUpdateStatus = async (matchId, updates) => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-    
     try {
+      // Auto-connects wallet and switches network if needed
       // Get match to get marketId
       const matchResponse = await api.get(`/matches/${matchId}`);
       const match = matchResponse.data;

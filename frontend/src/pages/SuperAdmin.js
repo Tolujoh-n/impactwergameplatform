@@ -51,15 +51,7 @@ const SuperAdmin = () => {
   };
 
   const handleSetFees = async () => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
+    // Wallet will auto-connect when blockchain function is called
     
     if (!isBaseSepolia) {
       showNotification('Please switch to Base Sepolia Testnet', 'warning');
@@ -117,15 +109,7 @@ const SuperAdmin = () => {
   };
 
   const handleTransfer = async () => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
+    // Wallet will auto-connect when blockchain function is called
     
     if (!isBaseSepolia) {
       showNotification('Please switch to Base Sepolia Testnet', 'warning');
@@ -154,15 +138,7 @@ const SuperAdmin = () => {
   };
   
   const handleFundJackpotPool = async () => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
+    // Wallet will auto-connect when blockchain function is called
     
     if (!isBaseSepolia) {
       showNotification('Please switch to Base Sepolia Testnet', 'warning');
@@ -186,15 +162,7 @@ const SuperAdmin = () => {
   };
   
   const handleWithdrawFromJackpotPool = async () => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
+    // Wallet will auto-connect when blockchain function is called
     
     if (!isBaseSepolia) {
       showNotification('Please switch to Base Sepolia Testnet', 'warning');
@@ -224,15 +192,7 @@ const SuperAdmin = () => {
   };
 
   const handleSetSuperAdmin = async () => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
+    // Wallet will auto-connect when blockchain function is called
     
     if (!isBaseSepolia) {
       showNotification('Please switch to Base Sepolia Testnet', 'warning');

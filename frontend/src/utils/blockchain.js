@@ -92,9 +92,55 @@ export const getCurrentAccount = async () => {
 };
 
 /**
+ * Ensure wallet is connected before proceeding with transaction
+ * This allows any wallet to be connected for transaction signing purposes
+ * (doesn't restrict based on registered wallet address)
+ */
+export const ensureWalletConnected = async () => {
+  if (typeof window.ethereum === 'undefined') {
+    throw new Error('MetaMask is not installed. Please install MetaMask to continue.');
+  }
+
+  // Check if wallet is already connected
+  const connected = await isWalletConnected();
+  
+  if (!connected) {
+    // Auto-connect wallet if not connected
+    await connectWallet();
+  } else {
+    // Ensure we're on the correct network
+    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    if (chainId !== BASE_TESTNET_PARAMS.chainId) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: BASE_TESTNET_PARAMS.chainId }],
+        });
+      } catch (switchError) {
+        // If chain doesn't exist, add it
+        if (switchError.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [BASE_TESTNET_PARAMS],
+          });
+        } else {
+          throw switchError;
+        }
+      }
+    }
+  }
+
+  // Return the connected address
+  return await getCurrentAccount();
+};
+
+/**
  * Get contract instance
  */
 export const getContract = async () => {
+  // Ensure wallet is connected first
+  await ensureWalletConnected();
+  
   if (typeof window.ethereum === 'undefined') {
     throw new Error('MetaMask is not installed');
   }

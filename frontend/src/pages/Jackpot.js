@@ -105,22 +105,7 @@ const Jackpot = () => {
       return;
     }
     
-    // Check wallet connection
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
-
+    // Wallet will auto-connect and switch network when blockchain function is called
     setWithdrawing(true);
     try {
       // Withdraw from blockchain first

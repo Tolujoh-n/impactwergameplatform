@@ -147,21 +147,7 @@ const MatchDetail = () => {
           }
         }
       } else if (type === 'boost') {
-        // Check wallet connection for boost predictions
-        if (!account) {
-          showNotification('Please connect your wallet first', 'warning');
-          try {
-            await connect();
-          } catch (error) {
-            showNotification('Failed to connect wallet', 'error');
-            return;
-          }
-        }
-        
-        if (!isBaseSepolia) {
-          showNotification('Please switch to Base Sepolia Testnet', 'warning');
-          return;
-        }
+        // Wallet will auto-connect when blockchain function is called
         
         if (canUpdate) {
           // Update existing prediction - amount is automatically preserved
@@ -220,20 +206,7 @@ const MatchDetail = () => {
   };
 
   const handleStakeAction = async (predictionId, action, amount) => {
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
+    // Wallet will auto-connect when blockchain function is called
     
     try {
       // Get prediction to get marketId and outcome
@@ -818,20 +791,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                         </p>
                         <button
                           onClick={async () => {
-                            if (!account) {
-                              showNotification('Please connect your wallet first', 'warning');
-                              try {
-                                await connect();
-                              } catch (error) {
-                                showNotification('Failed to connect wallet', 'error');
-                                return;
-                              }
-                            }
-                            
-                            if (!isBaseSepolia) {
-                              showNotification('Please switch to Base Sepolia Testnet', 'warning');
-                              return;
-                            }
+                            // Wallet will auto-connect when blockchain function is called
                             
                             try {
                               // Use item prop (already passed to component)
@@ -1423,21 +1383,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
       return;
     }
 
-    // Check wallet connection for market trading
-    if (!account) {
-      showNotification('Please connect your wallet first', 'warning');
-      try {
-        await connect();
-      } catch (error) {
-        showNotification('Failed to connect wallet', 'error');
-        return;
-      }
-    }
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
-      return;
-    }
+    // Wallet will auto-connect when blockchain function is called
     
     try {
       if (tradeType === 'buy') {
@@ -2074,20 +2020,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                             <button
                               key={idx}
                               onClick={async () => {
-                                if (!account) {
-                                  showNotification('Please connect your wallet first', 'warning');
-                                  try {
-                                    await connect();
-                                  } catch (error) {
-                                    showNotification('Failed to connect wallet', 'error');
-                                    return;
-                                  }
-                                }
-                                
-                                if (!isBaseSepolia) {
-                                  showNotification('Please switch to Base Sepolia Testnet', 'warning');
-                                  return;
-                                }
+                                // Wallet will auto-connect when blockchain function is called
                                 
                                 try {
                                   // Get marketId

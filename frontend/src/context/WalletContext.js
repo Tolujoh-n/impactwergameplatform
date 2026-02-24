@@ -6,6 +6,7 @@ import {
   onAccountsChanged,
   onChainChanged,
   removeListeners,
+  ensureWalletConnected,
   BASE_TESTNET_PARAMS,
 } from '../utils/blockchain';
 
@@ -98,6 +99,27 @@ export const WalletProvider = ({ children }) => {
     };
   }, [checkConnection, disconnect]);
 
+  const ensureConnected = useCallback(async () => {
+    setIsConnecting(true);
+    try {
+      const address = await ensureWalletConnected();
+      setAccount(address);
+      
+      // Get chain ID
+      if (typeof window.ethereum !== 'undefined') {
+        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+        setChainId(currentChainId);
+      }
+      
+      return address;
+    } catch (error) {
+      console.error('Error ensuring wallet connection:', error);
+      throw error;
+    } finally {
+      setIsConnecting(false);
+    }
+  }, []);
+
   const value = {
     account,
     isConnecting,
@@ -106,6 +128,8 @@ export const WalletProvider = ({ children }) => {
     connect,
     disconnect,
     checkConnection,
+    ensureConnected, // Auto-connect if not connected (for transaction signing)
+    provider: typeof window.ethereum !== 'undefined' ? window.ethereum : null,
   };
 
   return (
