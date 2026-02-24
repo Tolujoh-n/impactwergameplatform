@@ -3,6 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../components/Notification';
+import { useWallet } from '../context/WalletContext';
+import {
+  withdrawJackpot,
+  setContractAddress,
+} from '../utils/blockchain';
 
 const Jackpot = () => {
   const [searchParams] = useSearchParams();
@@ -27,6 +32,15 @@ const Jackpot = () => {
   });
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
+  const { account, connect, isBaseSepolia } = useWallet();
+  
+  // Set contract address on mount
+  useEffect(() => {
+    const contractAddr = process.env.REACT_APP_CONTRACT_ADDRESS;
+    if (contractAddr) {
+      setContractAddress(contractAddr);
+    }
+  }, []);
 
   const fetchJackpots = useCallback(async () => {
     setLoading(true);
@@ -90,15 +104,37 @@ const Jackpot = () => {
       showNotification('Insufficient balance', 'error');
       return;
     }
+    
+    // Check wallet connection
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
 
     setWithdrawing(true);
     try {
+      // Withdraw from blockchain first
+      const txHash = await withdrawJackpot(parseFloat(withdrawAmount));
+      showNotification(`Withdrawal sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      
+      // Then update backend
       const response = await api.post('/jackpots/withdraw', { amount: withdrawAmount });
       showNotification('Withdrawal successful!', 'success');
       setWithdrawAmount('');
       await fetchUserStats();
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Withdrawal failed', 'error');
+      console.error('Error withdrawing:', error);
+      showNotification(error.message || 'Withdrawal failed', 'error');
     } finally {
       setWithdrawing(false);
     }

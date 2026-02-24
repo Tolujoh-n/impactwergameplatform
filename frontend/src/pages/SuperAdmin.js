@@ -2,6 +2,17 @@ import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import { useNotification } from '../components/Notification';
+import { useWallet } from '../context/WalletContext';
+import {
+  setFees as setFeesOnChain,
+  getFees as getFeesFromChain,
+  getContractBalance as getContractBalanceFromChain,
+  transferFunds as transferFundsOnChain,
+  fundJackpotPool,
+  withdrawFromJackpotPool,
+  setSuperAdmin as setSuperAdminOnChain,
+  setContractAddress,
+} from '../utils/blockchain';
 
 const SuperAdmin = () => {
   const [activeTab, setActiveTab] = useState('fees');
@@ -20,7 +31,19 @@ const SuperAdmin = () => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalContent, setModalContent] = useState({ title: '', message: '', type: 'success' });
+  const [jackpotFundAmount, setJackpotFundAmount] = useState('');
+  const [jackpotWithdrawAmount, setJackpotWithdrawAmount] = useState('');
+  const [jackpotWithdrawTo, setJackpotWithdrawTo] = useState('');
   const { showNotification } = useNotification();
+  const { account, connect, isBaseSepolia } = useWallet();
+  
+  // Set contract address on mount (should be from env or config)
+  useEffect(() => {
+    const contractAddr = process.env.REACT_APP_CONTRACT_ADDRESS;
+    if (contractAddr) {
+      setContractAddress(contractAddr);
+    }
+  }, []);
 
   const showModalMessage = (title, message, type = 'success') => {
     setModalContent({ title, message, type });
@@ -28,19 +51,54 @@ const SuperAdmin = () => {
   };
 
   const handleSetFees = async () => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // First, set fees on blockchain
+      const txHash = await setFeesOnChain(
+        parseFloat(feeSettings.platformFee || 0),
+        parseFloat(feeSettings.boostJackpotFee || 0),
+        parseFloat(feeSettings.marketPlatformFee || 0),
+        parseFloat(feeSettings.freeJackpotFee || 0)
+      );
+      showNotification(`Fees set on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      
+      // Then update backend
       await api.post('/superadmin/set-fees', feeSettings);
-      showModalMessage('Success', 'Fees updated successfully!', 'success');
+      showModalMessage('Success', 'Fees updated successfully on blockchain and backend!', 'success');
       await handleGetFees();
     } catch (error) {
-      showModalMessage('Error', error.response?.data?.message || 'Failed to set fees', 'error');
+      console.error('Error setting fees:', error);
+      showModalMessage('Error', error.message || 'Failed to set fees', 'error');
     }
   };
 
   const handleGetFees = async () => {
     try {
-      const response = await api.get('/superadmin/get-fees');
-      setFeeSettings(response.data);
+      // Try to get from blockchain first
+      try {
+        const chainFees = await getFeesFromChain();
+        setFeeSettings(chainFees);
+        showNotification('Fees loaded from blockchain', 'success');
+      } catch (chainError) {
+        console.log('Could not get fees from chain, using backend:', chainError);
+        // Fallback to backend
+        const response = await api.get('/superadmin/get-fees');
+        setFeeSettings(response.data);
+      }
     } catch (error) {
       showModalMessage('Error', error.response?.data?.message || 'Failed to get fees', 'error');
     }
@@ -48,36 +106,154 @@ const SuperAdmin = () => {
 
   const handleGetBalance = async () => {
     try {
-      const response = await api.get('/superadmin/contract-balance');
-      setContractBalance(response.data.balance);
+      // Get from blockchain
+      const balance = await getContractBalanceFromChain();
+      setContractBalance(balance);
+      showNotification('Balance loaded from blockchain', 'success');
     } catch (error) {
-      showModalMessage('Error', error.response?.data?.message || 'Failed to get balance', 'error');
+      console.error('Error getting balance:', error);
+      showModalMessage('Error', error.message || 'Failed to get balance', 'error');
     }
   };
 
   const handleTransfer = async () => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Transfer on blockchain first
+      const txHash = await transferFundsOnChain(transferTo, parseFloat(transferAmount));
+      showNotification(`Transfer successful! TX: ${txHash.slice(0, 10)}...`, 'success');
+      
+      // Update backend if needed
       await api.post('/superadmin/transfer', {
         to: transferTo,
         amount: transferAmount,
       });
-      showModalMessage('Success', 'Transfer successful!', 'success');
+      
+      showModalMessage('Success', 'Transfer successful on blockchain!', 'success');
       setTransferAmount('');
       setTransferTo('');
+      await handleGetBalance();
     } catch (error) {
-      showModalMessage('Error', error.response?.data?.message || 'Transfer failed', 'error');
+      console.error('Error transferring:', error);
+      showModalMessage('Error', error.message || 'Transfer failed', 'error');
+    }
+  };
+  
+  const handleFundJackpotPool = async () => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
+    if (!jackpotFundAmount || parseFloat(jackpotFundAmount) <= 0) {
+      showNotification('Please enter a valid amount', 'warning');
+      return;
+    }
+    
+    try {
+      const txHash = await fundJackpotPool(parseFloat(jackpotFundAmount));
+      showNotification(`Jackpot pool funded! TX: ${txHash.slice(0, 10)}...`, 'success');
+      setJackpotFundAmount('');
+      await handleGetBalance();
+    } catch (error) {
+      console.error('Error funding jackpot pool:', error);
+      showNotification(error.message || 'Failed to fund jackpot pool', 'error');
+    }
+  };
+  
+  const handleWithdrawFromJackpotPool = async () => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
+    if (!jackpotWithdrawAmount || parseFloat(jackpotWithdrawAmount) <= 0) {
+      showNotification('Please enter a valid amount', 'warning');
+      return;
+    }
+    
+    if (!jackpotWithdrawTo) {
+      showNotification('Please enter a recipient address', 'warning');
+      return;
+    }
+    
+    try {
+      const txHash = await withdrawFromJackpotPool(jackpotWithdrawTo, parseFloat(jackpotWithdrawAmount));
+      showNotification(`Withdrawn from jackpot pool! TX: ${txHash.slice(0, 10)}...`, 'success');
+      setJackpotWithdrawAmount('');
+      setJackpotWithdrawTo('');
+      await handleGetBalance();
+    } catch (error) {
+      console.error('Error withdrawing from jackpot pool:', error);
+      showNotification(error.message || 'Failed to withdraw from jackpot pool', 'error');
     }
   };
 
   const handleSetSuperAdmin = async () => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Set on blockchain first
+      const txHash = await setSuperAdminOnChain(superAdminAddress);
+      showNotification(`SuperAdmin set on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      
+      // Update backend if needed
       await api.post('/superadmin/set-superadmin', {
         address: superAdminAddress,
       });
-      showModalMessage('Success', 'SuperAdmin address set successfully!', 'success');
+      
+      showModalMessage('Success', 'SuperAdmin address set successfully on blockchain!', 'success');
       setSuperAdminAddress('');
     } catch (error) {
-      showModalMessage('Error', error.response?.data?.message || 'Failed to set SuperAdmin', 'error');
+      console.error('Error setting superAdmin:', error);
+      showModalMessage('Error', error.message || 'Failed to set SuperAdmin', 'error');
     }
   };
 
@@ -340,6 +516,34 @@ const SuperAdmin = () => {
 
         {activeTab === 'contract' && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 space-y-6">
+            {/* Wallet Connection Status */}
+            {!account && (
+              <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-4">
+                <p className="text-yellow-800 dark:text-yellow-200 mb-2">
+                  Please connect your wallet to interact with the contract
+                </p>
+                <button
+                  onClick={connect}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                >
+                  Connect Wallet
+                </button>
+              </div>
+            )}
+            
+            {account && (
+              <div className="bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700 rounded-lg p-4 mb-4">
+                <p className="text-green-800 dark:text-green-200">
+                  Connected: {account.slice(0, 6)}...{account.slice(-4)}
+                </p>
+                {!isBaseSepolia && (
+                  <p className="text-yellow-800 dark:text-yellow-200 mt-2">
+                    ⚠️ Please switch to Base Sepolia Testnet
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
                 Contract Balance
@@ -378,10 +582,71 @@ const SuperAdmin = () => {
                 />
                 <button
                   onClick={handleTransfer}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                  disabled={!account || !isBaseSepolia}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Transfer
                 </button>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                Jackpot Pool Management
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    Fund Jackpot Pool
+                  </h3>
+                  <div className="flex space-x-2">
+                    <input
+                      type="number"
+                      value={jackpotFundAmount}
+                      onChange={(e) => setJackpotFundAmount(e.target.value)}
+                      placeholder="Amount (ETH)"
+                      className="flex-1 px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                    />
+                    <button
+                      onClick={handleFundJackpotPool}
+                      disabled={!account || !isBaseSepolia}
+                      className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Fund Pool
+                    </button>
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    Withdraw from Jackpot Pool
+                  </h3>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={jackpotWithdrawTo}
+                      onChange={(e) => setJackpotWithdrawTo(e.target.value)}
+                      placeholder="Recipient Address"
+                      className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                    />
+                    <div className="flex space-x-2">
+                      <input
+                        type="number"
+                        value={jackpotWithdrawAmount}
+                        onChange={(e) => setJackpotWithdrawAmount(e.target.value)}
+                        placeholder="Amount (ETH)"
+                        className="flex-1 px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                      />
+                      <button
+                        onClick={handleWithdrawFromJackpotPool}
+                        disabled={!account || !isBaseSepolia}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Withdraw
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

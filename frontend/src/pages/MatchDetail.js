@@ -3,6 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../components/Notification';
+import { useWallet } from '../context/WalletContext';
+import {
+  buyMarketShares,
+  sellMarketShares,
+  claimMarket,
+  stakeBoost,
+  addBoostStake,
+  withdrawBoostStake,
+  claimBoost,
+  setContractAddress,
+} from '../utils/blockchain';
 import Modal from '../components/Modal';
 
 const MatchDetail = () => {
@@ -14,6 +25,15 @@ const MatchDetail = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { showNotification } = useNotification();
+  const { account, connect, isBaseSepolia } = useWallet();
+  
+  // Set contract address on mount
+  useEffect(() => {
+    const contractAddr = process.env.REACT_APP_CONTRACT_ADDRESS;
+    if (contractAddr) {
+      setContractAddress(contractAddr);
+    }
+  }, []);
 
   const isPoll = !!pollId;
   const itemId = pollId || matchId;
@@ -127,8 +147,25 @@ const MatchDetail = () => {
           }
         }
       } else if (type === 'boost') {
+        // Check wallet connection for boost predictions
+        if (!account) {
+          showNotification('Please connect your wallet first', 'warning');
+          try {
+            await connect();
+          } catch (error) {
+            showNotification('Failed to connect wallet', 'error');
+            return;
+          }
+        }
+        
+        if (!isBaseSepolia) {
+          showNotification('Please switch to Base Sepolia Testnet', 'warning');
+          return;
+        }
+        
         if (canUpdate) {
           // Update existing prediction - amount is automatically preserved
+          // No blockchain call needed for updating outcome only
           await api.put(`/predictions/${prediction._id}`, { outcome });
           showNotification('Prediction updated successfully! Your stake amount has been preserved.', 'success');
         } else {
@@ -137,6 +174,33 @@ const MatchDetail = () => {
             showNotification('Please enter an amount to stake', 'warning');
             return;
           }
+          
+          // Get item to get marketId
+          const currentItem = match || poll;
+          if (!currentItem || !currentItem.marketId) {
+            showNotification('Market not created on blockchain yet', 'error');
+            return;
+          }
+          
+          // Normalize outcome
+          let normalizedOutcome = outcome;
+          if (!isPoll) {
+            if (outcome === 'TeamA' || outcome.toLowerCase() === 'teama') {
+              normalizedOutcome = 'TeamA';
+            } else if (outcome === 'TeamB' || outcome.toLowerCase() === 'teamb') {
+              normalizedOutcome = 'TeamB';
+            } else if (outcome === 'Draw' || outcome.toLowerCase() === 'draw') {
+              normalizedOutcome = 'Draw';
+            }
+          } else {
+            normalizedOutcome = outcome.toUpperCase();
+          }
+          
+          // Stake on blockchain first
+          const txHash = await stakeBoost(currentItem.marketId, normalizedOutcome, parseFloat(amount));
+          showNotification(`Stake sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+          
+          // Then create in backend
           await api.post('/predictions/boost', {
             [isPoll ? 'pollId' : 'matchId']: itemId,
             outcome,
@@ -156,16 +220,67 @@ const MatchDetail = () => {
   };
 
   const handleStakeAction = async (predictionId, action, amount) => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Get prediction to get marketId and outcome
+      const predResponse = await api.get(`/predictions/${predictionId}`);
+      const pred = predResponse.data;
+      
+      const item = match || poll;
+      if (!item || !item.marketId) {
+        showNotification('Market not found', 'error');
+        return;
+      }
+      
+      // Normalize outcome
+      let normalizedOutcome = pred.outcome;
+      if (!isPoll) {
+        if (normalizedOutcome === 'TeamA' || normalizedOutcome.toLowerCase() === 'teama') {
+          normalizedOutcome = 'TeamA';
+        } else if (normalizedOutcome === 'TeamB' || normalizedOutcome.toLowerCase() === 'teamb') {
+          normalizedOutcome = 'TeamB';
+        } else if (normalizedOutcome === 'Draw' || normalizedOutcome.toLowerCase() === 'draw') {
+          normalizedOutcome = 'Draw';
+        }
+      } else {
+        normalizedOutcome = normalizedOutcome.toUpperCase();
+      }
+      
+      if (action === 'add') {
+        // Add stake on blockchain
+        const txHash = await addBoostStake(item.marketId, normalizedOutcome, parseFloat(amount));
+        showNotification(`Stake added on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      } else if (action === 'withdraw') {
+        // Withdraw stake on blockchain
+        const txHash = await withdrawBoostStake(item.marketId, normalizedOutcome, parseFloat(amount));
+        showNotification(`Stake withdrawn from blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      }
+      
+      // Then update backend
       await api.post(`/predictions/boost/${predictionId}/stake`, {
-        action, // 'add' or 'withdraw'
+        action,
         amount: parseFloat(amount),
       });
       showNotification(`Stake ${action === 'add' ? 'added' : 'withdrawn'} successfully!`, 'success');
       await fetchUserPrediction();
-      await fetchData(); // Refresh match/poll data to update boost pool
+      await fetchData();
     } catch (error) {
-      showNotification(error.response?.data?.message || `Failed to ${action} stake`, 'error');
+      console.error('Error in stake action:', error);
+      showNotification(error.message || `Failed to ${action} stake`, 'error');
     }
   };
 
@@ -510,6 +625,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
   const [stakeAmount, setStakeAmount] = useState('');
   const [fees, setFees] = useState({ platformFee: 10, boostJackpotFee: 10 });
   const { showNotification } = useNotification();
+  const { account, connect, isBaseSepolia } = useWallet();
   
   // Fetch fees on mount
   useEffect(() => {
@@ -702,9 +818,50 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                         </p>
                         <button
                           onClick={async () => {
+                            if (!account) {
+                              showNotification('Please connect your wallet first', 'warning');
+                              try {
+                                await connect();
+                              } catch (error) {
+                                showNotification('Failed to connect wallet', 'error');
+                                return;
+                              }
+                            }
+                            
+                            if (!isBaseSepolia) {
+                              showNotification('Please switch to Base Sepolia Testnet', 'warning');
+                              return;
+                            }
+                            
                             try {
+                              // Use item prop (already passed to component)
+                              if (!item || !item.marketId) {
+                                showNotification('Market not found', 'error');
+                                return;
+                              }
+                              
+                              // Normalize outcome
+                              let normalizedOutcome = prediction.outcome;
+                              if (!isPoll) {
+                                if (normalizedOutcome === 'TeamA' || normalizedOutcome.toLowerCase() === 'teama') {
+                                  normalizedOutcome = 'TeamA';
+                                } else if (normalizedOutcome === 'TeamB' || normalizedOutcome.toLowerCase() === 'teamb') {
+                                  normalizedOutcome = 'TeamB';
+                                } else if (normalizedOutcome === 'Draw' || normalizedOutcome.toLowerCase() === 'draw') {
+                                  normalizedOutcome = 'Draw';
+                                }
+                              } else {
+                                normalizedOutcome = normalizedOutcome.toUpperCase();
+                              }
+                              
+                              // Claim on blockchain first
+                              const txHash = await claimBoost(item.marketId, normalizedOutcome);
+                              showNotification(`Claim sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+                              
+                              // Then claim in backend
                               await api.post(`/predictions/${prediction._id}/claim`);
                               showNotification('Payout claimed successfully!', 'success');
+                              
                               // Refresh prediction data
                               if (onRefreshPrediction) {
                                 await onRefreshPrediction();
@@ -712,7 +869,8 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                                 window.location.reload();
                               }
                             } catch (error) {
-                              showNotification(error.response?.data?.message || 'Failed to claim', 'error');
+                              console.error('Error claiming:', error);
+                              showNotification(error.message || 'Failed to claim', 'error');
                             }
                           }}
                           disabled={prediction.claimed}
@@ -998,6 +1156,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
 };
 
 const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locked = false, onItemUpdate }) => {
+  const { account, connect, isBaseSepolia } = useWallet();
   const [selectedOption, setSelectedOption] = useState(null);
   const [tradeType, setTradeType] = useState('buy');
   const [amount, setAmount] = useState('');
@@ -1264,8 +1423,49 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
       return;
     }
 
+    // Check wallet connection for market trading
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
       if (tradeType === 'buy') {
+        // Get marketId
+        if (!itemData.marketId) {
+          showNotification('Market not created on blockchain yet', 'error');
+          return;
+        }
+        
+        // Normalize outcome
+        let normalizedOutcome = selectedOption;
+        if (!isPoll) {
+          if (normalizedOutcome === 'teamA' || normalizedOutcome === 'TeamA') {
+            normalizedOutcome = 'TeamA';
+          } else if (normalizedOutcome === 'teamB' || normalizedOutcome === 'TeamB') {
+            normalizedOutcome = 'TeamB';
+          } else if (normalizedOutcome === 'draw' || normalizedOutcome === 'Draw') {
+            normalizedOutcome = 'Draw';
+          }
+        } else {
+          normalizedOutcome = normalizedOutcome.toUpperCase();
+        }
+        
+        // Buy on blockchain first
+        const txHash = await buyMarketShares(itemData.marketId, normalizedOutcome, parseFloat(amount));
+        showNotification(`Buy order sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+        
+        // Then process in backend
         const buyResponse = await api.post('/predictions/market/buy', {
           [isPoll ? 'pollId' : 'matchId']: itemData._id,
           outcome: selectedOption,
@@ -1338,6 +1538,28 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           sharesToSell = parsedAmount;
         }
         
+        // Normalize outcome for blockchain
+        let normalizedOutcome = outcomeToSend;
+        if (!isPoll) {
+          if (normalizedOutcome === 'TEAMA' || normalizedOutcome === 'TeamA' || normalizedOutcome === 'teamA') {
+            normalizedOutcome = 'TeamA';
+          } else if (normalizedOutcome === 'TEAMB' || normalizedOutcome === 'TeamB' || normalizedOutcome === 'teamB') {
+            normalizedOutcome = 'TeamB';
+          } else if (normalizedOutcome === 'DRAW' || normalizedOutcome === 'Draw' || normalizedOutcome === 'draw') {
+            normalizedOutcome = 'Draw';
+          }
+        } else {
+          normalizedOutcome = normalizedOutcome.toUpperCase();
+        }
+        
+        // Calculate actual shares to sell
+        const actualShares = sharesToSell === 'max' ? availableShares : sharesToSell;
+        
+        // Sell on blockchain first
+        const txHash = await sellMarketShares(itemData.marketId, normalizedOutcome, actualShares);
+        showNotification(`Sell order sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+        
+        // Then process in backend
         const sellResponse = await api.post('/predictions/market/sell', {
           [isPoll ? 'pollId' : 'matchId']: itemData._id,
           outcome: outcomeToSend, // Use the stored outcome from prediction
@@ -1852,12 +2074,53 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                             <button
                               key={idx}
                               onClick={async () => {
+                                if (!account) {
+                                  showNotification('Please connect your wallet first', 'warning');
+                                  try {
+                                    await connect();
+                                  } catch (error) {
+                                    showNotification('Failed to connect wallet', 'error');
+                                    return;
+                                  }
+                                }
+                                
+                                if (!isBaseSepolia) {
+                                  showNotification('Please switch to Base Sepolia Testnet', 'warning');
+                                  return;
+                                }
+                                
                                 try {
+                                  // Get marketId
+                                  if (!itemData.marketId) {
+                                    showNotification('Market not found', 'error');
+                                    return;
+                                  }
+                                  
+                                  // Normalize outcome
+                                  let normalizedOutcome = pred.outcome;
+                                  if (!isPoll) {
+                                    if (normalizedOutcome === 'TEAMA' || normalizedOutcome === 'TeamA' || normalizedOutcome === 'teamA') {
+                                      normalizedOutcome = 'TeamA';
+                                    } else if (normalizedOutcome === 'TEAMB' || normalizedOutcome === 'TeamB' || normalizedOutcome === 'teamB') {
+                                      normalizedOutcome = 'TeamB';
+                                    } else if (normalizedOutcome === 'DRAW' || normalizedOutcome === 'Draw' || normalizedOutcome === 'draw') {
+                                      normalizedOutcome = 'Draw';
+                                    }
+                                  } else {
+                                    normalizedOutcome = normalizedOutcome.toUpperCase();
+                                  }
+                                  
+                                  // Claim on blockchain first
+                                  const txHash = await claimMarket(itemData.marketId, normalizedOutcome);
+                                  showNotification(`Claim sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+                                  
+                                  // Then claim in backend
                                   await api.post(`/predictions/${pred._id}/claim`);
                                   showNotification('Payout claimed successfully!', 'success');
                                   fetchUserMarketPrediction();
                                 } catch (error) {
-                                  showNotification(error.response?.data?.message || 'Failed to claim', 'error');
+                                  console.error('Error claiming:', error);
+                                  showNotification(error.message || 'Failed to claim', 'error');
                                 }
                               }}
                               className="w-full mb-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"

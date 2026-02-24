@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import { useNotification } from '../components/Notification';
+import { useWallet } from '../context/WalletContext';
+import {
+  createMarket,
+  addLiquidity,
+  resolveMarket,
+  updateMarketStatus,
+  setContractAddress,
+} from '../utils/blockchain';
 import Modal from '../components/Modal';
 import TiptapEditor from '../components/TiptapEditor';
 import ImageUpload from '../components/ImageUpload';
@@ -14,6 +22,15 @@ const Admin = () => {
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const { showNotification } = useNotification();
+  const { account, connect, isBaseSepolia } = useWallet();
+  
+  // Set contract address on mount
+  useEffect(() => {
+    const contractAddr = process.env.REACT_APP_CONTRACT_ADDRESS;
+    if (contractAddr) {
+      setContractAddress(contractAddr);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -126,12 +143,54 @@ const Admin = () => {
   };
 
   const handleCreateMatch = async (matchData) => {
+    // Check wallet connection
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
-      await api.post('/admin/matches', matchData);
+      // Create market on blockchain first
+      const options = ['TeamA', 'Draw', 'TeamB'];
+      const marketId = await createMarket(false, options);
+      showNotification(`Market created on blockchain! Market ID: ${marketId}`, 'success');
+      
+      // Add initial liquidity if provided
+      if (matchData.marketTeamALiquidity > 0 || matchData.marketTeamBLiquidity > 0 || matchData.marketDrawLiquidity > 0) {
+        if (matchData.marketTeamALiquidity > 0) {
+          await addLiquidity(parseInt(marketId), 'TeamA', matchData.marketTeamALiquidity);
+        }
+        if (matchData.marketTeamBLiquidity > 0) {
+          await addLiquidity(parseInt(marketId), 'TeamB', matchData.marketTeamBLiquidity);
+        }
+        if (matchData.marketDrawLiquidity > 0) {
+          await addLiquidity(parseInt(marketId), 'Draw', matchData.marketDrawLiquidity);
+        }
+        showNotification('Initial liquidity added on blockchain!', 'success');
+      }
+      
+      // Create match in backend with marketId
+      const response = await api.post('/admin/matches', {
+        ...matchData,
+        marketId: parseInt(marketId),
+        marketInitialized: true,
+      });
+      
       fetchData();
-      showNotification('Match created successfully!', 'success');
+      showNotification('Match created successfully on blockchain and backend!', 'success');
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Failed to create match', 'error');
+      console.error('Error creating match:', error);
+      showNotification(error.message || 'Failed to create match', 'error');
     }
   };
 
@@ -156,43 +215,218 @@ const Admin = () => {
   };
 
   const handleAddMatchLiquidity = async (matchId, liquidity) => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Get match to get marketId
+      const matchResponse = await api.get(`/matches/${matchId}`);
+      const match = matchResponse.data;
+      
+      if (!match.marketId) {
+        showNotification('Market not created on blockchain yet', 'error');
+        return;
+      }
+      
+      // Add liquidity on blockchain
+      if (liquidity.teamALiquidity > 0) {
+        await addLiquidity(match.marketId, 'TeamA', liquidity.teamALiquidity);
+      }
+      if (liquidity.teamBLiquidity > 0) {
+        await addLiquidity(match.marketId, 'TeamB', liquidity.teamBLiquidity);
+      }
+      if (liquidity.drawLiquidity > 0) {
+        await addLiquidity(match.marketId, 'Draw', liquidity.drawLiquidity);
+      }
+      
+      showNotification('Liquidity added on blockchain!', 'success');
+      
+      // Update backend
       await api.post(`/admin/matches/${matchId}/liquidity`, liquidity);
       fetchData();
       showNotification('Liquidity added successfully!', 'success');
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Failed to add liquidity', 'error');
+      console.error('Error adding liquidity:', error);
+      showNotification(error.message || 'Failed to add liquidity', 'error');
     }
   };
 
   const handleResolveMatch = async (matchId, result) => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Get match to get marketId
+      const matchResponse = await api.get(`/matches/${matchId}`);
+      const match = matchResponse.data;
+      
+      if (!match.marketId) {
+        showNotification('Market not created on blockchain yet', 'error');
+        return;
+      }
+      
+      // Map result to blockchain format
+      let winningOption = result;
+      if (result === 'TeamA' || result.toLowerCase() === 'teama') {
+        winningOption = 'TeamA';
+      } else if (result === 'TeamB' || result.toLowerCase() === 'teamb') {
+        winningOption = 'TeamB';
+      } else if (result === 'Draw' || result.toLowerCase() === 'draw') {
+        winningOption = 'Draw';
+      }
+      
+      // Resolve on blockchain first
+      const txHash = await resolveMarket(match.marketId, winningOption);
+      showNotification(`Match resolved on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      
+      // Then resolve in backend
       await api.post(`/admin/matches/${matchId}/resolve`, { result });
       fetchData();
       showNotification('Match resolved successfully!', 'success');
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Failed to resolve match', 'error');
+      console.error('Error resolving match:', error);
+      showNotification(error.message || 'Failed to resolve match', 'error');
     }
   };
 
   const handleCreatePoll = async (pollData) => {
+    // Check wallet connection
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
-      await api.post('/admin/polls', pollData);
+      // Create market on blockchain first
+      let options = [];
+      if (pollData.optionType === 'options' && pollData.options) {
+        // Option-based poll
+        options = pollData.options.map(opt => opt.text);
+      } else {
+        // Normal Yes/No poll
+        options = ['YES', 'NO'];
+      }
+      
+      const marketId = await createMarket(true, options);
+      showNotification(`Market created on blockchain! Market ID: ${marketId}`, 'success');
+      
+      // Add initial liquidity if provided
+      if (pollData.optionType === 'options' && pollData.options) {
+        for (const opt of pollData.options) {
+          if (opt.liquidity > 0) {
+            await addLiquidity(parseInt(marketId), opt.text, opt.liquidity);
+          }
+        }
+      } else {
+        // Normal Yes/No poll
+        if (pollData.marketYesLiquidity > 0) {
+          await addLiquidity(parseInt(marketId), 'YES', pollData.marketYesLiquidity);
+        }
+        if (pollData.marketNoLiquidity > 0) {
+          await addLiquidity(parseInt(marketId), 'NO', pollData.marketNoLiquidity);
+        }
+      }
+      
+      if (pollData.marketYesLiquidity > 0 || pollData.marketNoLiquidity > 0 || 
+          (pollData.options && pollData.options.some(opt => opt.liquidity > 0))) {
+        showNotification('Initial liquidity added on blockchain!', 'success');
+      }
+      
+      // Create poll in backend with marketId
+      const response = await api.post('/admin/polls', {
+        ...pollData,
+        marketId: parseInt(marketId),
+        marketInitialized: true,
+      });
+      
       fetchData();
-      showNotification('Poll created successfully!', 'success');
+      showNotification('Poll created successfully on blockchain and backend!', 'success');
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Failed to create poll', 'error');
+      console.error('Error creating poll:', error);
+      showNotification(error.message || 'Failed to create poll', 'error');
     }
   };
 
   const handleResolvePoll = async (pollId, result, optionIndex) => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Get poll to get marketId
+      const pollResponse = await api.get(`/polls/${pollId}`);
+      const poll = pollResponse.data;
+      
+      if (!poll.marketId) {
+        showNotification('Market not created on blockchain yet', 'error');
+        return;
+      }
+      
+      // Determine winning option
+      let winningOption = result;
+      if (poll.optionType === 'options' && optionIndex !== undefined) {
+        winningOption = poll.options[optionIndex].text;
+      } else if (result) {
+        winningOption = result.toUpperCase();
+      }
+      
+      // Resolve on blockchain first
+      const txHash = await resolveMarket(poll.marketId, winningOption);
+      showNotification(`Poll resolved on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      
+      // Then resolve in backend
       const payload = optionIndex !== undefined ? { optionIndex } : { result };
       await api.post(`/admin/polls/${pollId}/resolve`, payload);
       fetchData();
       showNotification('Poll resolved successfully!', 'success');
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Failed to resolve poll', 'error');
+      console.error('Error resolving poll:', error);
+      showNotification(error.message || 'Failed to resolve poll', 'error');
     }
   };
 
@@ -217,12 +451,57 @@ const Admin = () => {
   };
 
   const handleAddPollLiquidity = async (pollId, liquidity) => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Get poll to get marketId
+      const pollResponse = await api.get(`/polls/${pollId}`);
+      const poll = pollResponse.data;
+      
+      if (!poll.marketId) {
+        showNotification('Market not created on blockchain yet', 'error');
+        return;
+      }
+      
+      // Add liquidity on blockchain
+      if (poll.optionType === 'options' && liquidity.options) {
+        for (const opt of liquidity.options) {
+          if (opt.liquidity > 0) {
+            await addLiquidity(poll.marketId, opt.text, opt.liquidity);
+          }
+        }
+      } else {
+        // Normal Yes/No poll
+        if (liquidity.yesLiquidity > 0) {
+          await addLiquidity(poll.marketId, 'YES', liquidity.yesLiquidity);
+        }
+        if (liquidity.noLiquidity > 0) {
+          await addLiquidity(poll.marketId, 'NO', liquidity.noLiquidity);
+        }
+      }
+      
+      showNotification('Liquidity added on blockchain!', 'success');
+      
+      // Update backend
       await api.post(`/admin/polls/${pollId}/liquidity`, liquidity);
       fetchData();
       showNotification('Liquidity added successfully!', 'success');
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Failed to add liquidity', 'error');
+      console.error('Error adding liquidity:', error);
+      showNotification(error.message || 'Failed to add liquidity', 'error');
     }
   };
 
@@ -307,12 +586,48 @@ const Admin = () => {
   };
 
   const handleUpdateStatus = async (matchId, updates) => {
+    if (!account) {
+      showNotification('Please connect your wallet first', 'warning');
+      try {
+        await connect();
+      } catch (error) {
+        showNotification('Failed to connect wallet', 'error');
+        return;
+      }
+    }
+    
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    
     try {
+      // Get match to get marketId
+      const matchResponse = await api.get(`/matches/${matchId}`);
+      const match = matchResponse.data;
+      
+      if (!match.marketId) {
+        showNotification('Market not created on blockchain yet', 'error');
+        return;
+      }
+      
+      // Map status to blockchain enum (0=Upcoming, 1=Active, 2=Locked, 3=Resolved)
+      let statusValue = 0;
+      if (updates.status === 'active') statusValue = 1;
+      else if (updates.status === 'locked') statusValue = 2;
+      else if (updates.status === 'resolved' || updates.status === 'completed') statusValue = 3;
+      
+      // Update status on blockchain
+      const txHash = await updateMarketStatus(match.marketId, statusValue);
+      showNotification(`Status updated on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      
+      // Update in backend
       await api.post(`/admin/matches/${matchId}/status`, updates);
       fetchData();
       showNotification('Status updated successfully!', 'success');
     } catch (error) {
-      showNotification(error.response?.data?.message || 'Failed to update status', 'error');
+      console.error('Error updating status:', error);
+      showNotification(error.message || 'Failed to update status', 'error');
     }
   };
 
