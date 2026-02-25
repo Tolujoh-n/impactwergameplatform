@@ -228,10 +228,6 @@ const MatchDetail = () => {
     // Wallet will auto-connect when blockchain function is called
     
     try {
-      // Get prediction to get marketId and outcome
-      const predResponse = await api.get(`/predictions/${predictionId}`);
-      const pred = predResponse.data;
-      
       const item = match || poll;
       if (!item || !item.marketId) {
         showNotification('Market not created on blockchain yet', 'error');
@@ -244,8 +240,39 @@ const MatchDetail = () => {
         return;
       }
       
+      // Get prediction to get outcome - but handle case where it might not exist
+      let prediction = null;
+      let normalizedOutcome = null;
+      
+      try {
+        const predResponse = await api.get(`/predictions/${predictionId}`);
+        prediction = predResponse.data;
+        normalizedOutcome = prediction.outcome;
+      } catch (predError) {
+        // If prediction doesn't exist, try to get it from user predictions
+        try {
+          const endpoint = isPoll 
+            ? `/predictions/poll/${item._id}/user?type=boost`
+            : `/predictions/match/${item._id}/user?type=boost`;
+          const response = await api.get(endpoint);
+          prediction = response.data;
+          if (prediction) {
+            normalizedOutcome = prediction.outcome;
+          } else {
+            throw new Error('Prediction not found');
+          }
+        } catch (err) {
+          showNotification('Could not find prediction. Please make a prediction first.', 'error');
+          return;
+        }
+      }
+      
+      if (!normalizedOutcome) {
+        showNotification('Could not determine outcome', 'error');
+        return;
+      }
+      
       // Normalize outcome
-      let normalizedOutcome = pred.outcome;
       if (!isPoll) {
         if (normalizedOutcome === 'TeamA' || normalizedOutcome.toLowerCase() === 'teama') {
           normalizedOutcome = 'TeamA';
@@ -258,24 +285,33 @@ const MatchDetail = () => {
         normalizedOutcome = normalizedOutcome.toUpperCase();
       }
       
-      if (action === 'add') {
-        // Add stake on blockchain
-        const txHash = await addBoostStake(item.marketId, normalizedOutcome, parseFloat(amount));
-        showNotification(`Stake added on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
-      } else if (action === 'withdraw') {
-        // Withdraw stake on blockchain
-        const txHash = await withdrawBoostStake(item.marketId, normalizedOutcome, parseFloat(amount));
-        showNotification(`Stake withdrawn from blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+      try {
+        if (action === 'add') {
+          // Add stake on blockchain first
+          showNotification('Sending transaction to blockchain...', 'info');
+          const txHash = await addBoostStake(item.marketId, normalizedOutcome, parseFloat(amount));
+          showNotification(`Transaction confirmed! TX: ${txHash.slice(0, 10)}...`, 'success');
+        } else if (action === 'withdraw') {
+          // Withdraw stake on blockchain first
+          showNotification('Sending transaction to blockchain...', 'info');
+          const txHash = await withdrawBoostStake(item.marketId, normalizedOutcome, parseFloat(amount));
+          showNotification(`Transaction confirmed! TX: ${txHash.slice(0, 10)}...`, 'success');
+        }
+        
+        // Then update backend only after blockchain success
+        const actualPredictionId = prediction?._id || predictionId;
+        await api.post(`/predictions/boost/${actualPredictionId}/stake`, {
+          action,
+          amount: parseFloat(amount),
+        });
+        showNotification(`Stake ${action === 'add' ? 'added' : 'withdrawn'} successfully!`, 'success');
+        await fetchUserPrediction();
+        await fetchData();
+      } catch (blockchainError) {
+        console.error('Blockchain transaction failed:', blockchainError);
+        showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+        throw blockchainError; // Re-throw to prevent backend call
       }
-      
-      // Then update backend
-      await api.post(`/predictions/boost/${predictionId}/stake`, {
-        action,
-        amount: parseFloat(amount),
-      });
-      showNotification(`Stake ${action === 'add' ? 'added' : 'withdrawn'} successfully!`, 'success');
-      await fetchUserPrediction();
-      await fetchData();
     } catch (error) {
       console.error('Error in stake action:', error);
       showNotification(error.message || `Failed to ${action} stake`, 'error');

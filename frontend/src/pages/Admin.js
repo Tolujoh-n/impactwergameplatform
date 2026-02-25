@@ -8,6 +8,8 @@ import {
   resolveMarket,
   updateMarketStatus,
   setContractAddress,
+  setClaimableBalance,
+  setJackpotBalance,
 } from '../utils/blockchain';
 import Modal from '../components/Modal';
 import TiptapEditor from '../components/TiptapEditor';
@@ -270,7 +272,97 @@ const Admin = () => {
         showNotification(`Match resolved on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
         
         // Then resolve in backend only after blockchain success
-        await api.post(`/admin/matches/${matchId}/resolve`, { result });
+        const resolveResponse = await api.post(`/admin/matches/${matchId}/resolve`, { result });
+        const resolvedMatch = resolveResponse.data;
+        
+        // After backend resolution, set claimable balances and jackpot balances on blockchain
+        // We need to fetch the resolved match to get updated prediction data
+        const updatedMatchResponse = await api.get(`/matches/${matchId}`);
+        const updatedMatch = updatedMatchResponse.data;
+        
+        // Fetch all predictions for this match to set claimable balances
+        let predictions = [];
+        try {
+          // Get predictions - we'll need to query by match
+          // Since there's no direct endpoint, we'll create a helper to get predictions
+          const allUserPredictions = await api.get('/predictions/user');
+          predictions = Array.isArray(allUserPredictions.data) 
+            ? allUserPredictions.data.filter(p => 
+                p.match && (p.match._id === matchId || p.match === matchId || String(p.match) === String(matchId))
+              )
+            : [];
+        } catch (err) {
+          console.warn('Could not fetch all predictions, will try alternative method', err);
+        }
+        
+        // Set claimable balances for boost and market winners
+        let setBalanceCount = 0;
+        const processedUsers = new Set();
+        
+        for (const prediction of predictions) {
+          if (prediction.status === 'settled' && prediction.payout > 0 && (prediction.type === 'boost' || prediction.type === 'market')) {
+            try {
+              const userId = prediction.user?._id || prediction.user;
+              if (!userId || processedUsers.has(userId)) continue;
+              processedUsers.add(userId);
+              
+              // Get user to get wallet address
+              const userResponse = await api.get(`/users/${userId}`);
+              const user = userResponse.data;
+              
+              if (user && user.walletAddress) {
+                // Normalize outcome for blockchain
+                let normalizedOutcome = prediction.outcome;
+                if (normalizedOutcome === 'TeamA' || normalizedOutcome.toLowerCase() === 'teama') {
+                  normalizedOutcome = 'TeamA';
+                } else if (normalizedOutcome === 'TeamB' || normalizedOutcome.toLowerCase() === 'teamb') {
+                  normalizedOutcome = 'TeamB';
+                } else if (normalizedOutcome === 'Draw' || normalizedOutcome.toLowerCase() === 'draw') {
+                  normalizedOutcome = 'Draw';
+                } else {
+                  normalizedOutcome = normalizedOutcome.toUpperCase();
+                }
+                
+                // Set claimable balance for boost and market winners
+                await setClaimableBalance(match.marketId, user.walletAddress, prediction.payout);
+                setBalanceCount++;
+              }
+            } catch (balanceError) {
+              console.error(`Error setting claimable balance for prediction ${prediction._id}:`, balanceError);
+              // Continue with other predictions
+            }
+          }
+        }
+        
+        // Set jackpot balances for users who won jackpots
+        // Get all users who have jackpot balances from winning predictions
+        const winningPredictions = predictions.filter(p => 
+          p.status === 'won' && (p.type === 'free' || p.type === 'boost')
+        );
+        const uniqueUserIds = [...new Set(winningPredictions.map(p => p.user?._id || p.user))];
+        let jackpotBalanceCount = 0;
+        
+        for (const userId of uniqueUserIds) {
+          try {
+            const userResponse = await api.get(`/users/${userId}`);
+            const user = userResponse.data;
+            
+            if (user && user.walletAddress && user.jackpotBalance > 0) {
+              await setJackpotBalance(user.walletAddress, user.jackpotBalance);
+              jackpotBalanceCount++;
+            }
+          } catch (jackpotError) {
+            console.error(`Error setting jackpot balance for user ${userId}:`, jackpotError);
+            // Continue with other users
+          }
+        }
+        
+        if (setBalanceCount > 0) {
+          showNotification(`Set ${setBalanceCount} claimable balance(s) on blockchain`, 'success');
+        }
+        if (jackpotBalanceCount > 0) {
+          showNotification(`Set ${jackpotBalanceCount} jackpot balance(s) on blockchain`, 'success');
+        }
       } catch (blockchainError) {
         console.error('Blockchain transaction failed:', blockchainError);
         showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
@@ -369,6 +461,83 @@ const Admin = () => {
         // Then resolve in backend only after blockchain success
         const payload = optionIndex !== undefined ? { optionIndex } : { result };
         await api.post(`/admin/polls/${pollId}/resolve`, payload);
+        
+        // After backend resolution, set claimable balances and jackpot balances on blockchain
+        const updatedPollResponse = await api.get(`/polls/${pollId}`);
+        const updatedPoll = updatedPollResponse.data;
+        
+        // Fetch all predictions for this poll to set claimable balances
+        let predictions = [];
+        try {
+          const allUserPredictions = await api.get('/predictions/user');
+          predictions = Array.isArray(allUserPredictions.data) 
+            ? allUserPredictions.data.filter(p => 
+                p.poll && (p.poll._id === pollId || p.poll === pollId || String(p.poll) === String(pollId))
+              )
+            : [];
+        } catch (err) {
+          console.warn('Could not fetch all predictions, will try alternative method', err);
+        }
+        
+        // Set claimable balances for boost and market winners
+        let setBalanceCount = 0;
+        const processedUsers = new Set();
+        
+        for (const prediction of predictions) {
+          if (prediction.status === 'settled' && prediction.payout > 0 && (prediction.type === 'boost' || prediction.type === 'market')) {
+            try {
+              const userId = prediction.user?._id || prediction.user;
+              if (!userId || processedUsers.has(userId)) continue;
+              processedUsers.add(userId);
+              
+              // Get user to get wallet address
+              const userResponse = await api.get(`/users/${userId}`);
+              const user = userResponse.data;
+              
+              if (user && user.walletAddress) {
+                // Normalize outcome for blockchain (polls use YES/NO or option text)
+                let normalizedOutcome = prediction.outcome;
+                normalizedOutcome = normalizedOutcome.toUpperCase();
+                
+                // Set claimable balance for boost and market winners
+                await setClaimableBalance(poll.marketId, user.walletAddress, prediction.payout);
+                setBalanceCount++;
+              }
+            } catch (balanceError) {
+              console.error(`Error setting claimable balance for prediction ${prediction._id}:`, balanceError);
+              // Continue with other predictions
+            }
+          }
+        }
+        
+        // Set jackpot balances for users who won jackpots
+        const winningPredictions = predictions.filter(p => 
+          p.status === 'won' && (p.type === 'free' || p.type === 'boost')
+        );
+        const uniqueUserIds = [...new Set(winningPredictions.map(p => p.user?._id || p.user))];
+        let jackpotBalanceCount = 0;
+        
+        for (const userId of uniqueUserIds) {
+          try {
+            const userResponse = await api.get(`/users/${userId}`);
+            const user = userResponse.data;
+            
+            if (user && user.walletAddress && user.jackpotBalance > 0) {
+              await setJackpotBalance(user.walletAddress, user.jackpotBalance);
+              jackpotBalanceCount++;
+            }
+          } catch (jackpotError) {
+            console.error(`Error setting jackpot balance for user ${userId}:`, jackpotError);
+            // Continue with other users
+          }
+        }
+        
+        if (setBalanceCount > 0) {
+          showNotification(`Set ${setBalanceCount} claimable balance(s) on blockchain`, 'success');
+        }
+        if (jackpotBalanceCount > 0) {
+          showNotification(`Set ${jackpotBalanceCount} jackpot balance(s) on blockchain`, 'success');
+        }
       } catch (blockchainError) {
         console.error('Blockchain transaction failed:', blockchainError);
         showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
@@ -829,9 +998,9 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
         <AddLiquidityModal
           match={showLiquidityModal}
           onClose={() => setShowLiquidityModal(null)}
-          onSubmit={(liquidity) => {
-            onAddLiquidity(showLiquidityModal._id, liquidity);
-            setShowLiquidityModal(null);
+          onSubmit={async (liquidity) => {
+            await onAddLiquidity(showLiquidityModal._id, liquidity);
+            // Modal will close itself after successful submission
           }}
         />
       )}
@@ -1124,32 +1293,43 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
 const ResolveModal = ({ item, type, onClose, onSubmit }) => {
   const [result, setResult] = useState('');
   const [optionIndex, setOptionIndex] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Map the display value to the backend expected value
-    let backendResult = result;
-    if (type === 'match') {
-      if (result === item.teamA) {
-        backendResult = 'teamA';
-      } else if (result === item.teamB) {
-        backendResult = 'teamB';
-      } else if (result === 'Draw') {
-        backendResult = 'draw';
-      }
-      onSubmit(item._id, backendResult);
-    } else {
-      // For polls
-      if (item.optionType === 'options') {
-        // Option-based poll - send optionIndex
-        onSubmit(item._id, null, parseInt(optionIndex));
+    setIsSubmitting(true);
+    
+    try {
+      // Map the display value to the backend expected value
+      let backendResult = result;
+      if (type === 'match') {
+        if (result === item.teamA) {
+          backendResult = 'teamA';
+        } else if (result === item.teamB) {
+          backendResult = 'teamB';
+        } else if (result === 'Draw') {
+          backendResult = 'draw';
+        }
+        await onSubmit(item._id, backendResult);
       } else {
-        // Normal Yes/No poll
-        backendResult = result.toUpperCase();
-        onSubmit(item._id, backendResult);
+        // For polls
+        if (item.optionType === 'options') {
+          // Option-based poll - send optionIndex
+          await onSubmit(item._id, null, parseInt(optionIndex));
+        } else {
+          // Normal Yes/No poll
+          backendResult = result.toUpperCase();
+          await onSubmit(item._id, backendResult);
+        }
       }
+      // Only close modal after successful submission
+      onClose();
+    } catch (error) {
+      // Error already handled in onSubmit, just don't close modal
+      console.error('Error in resolve modal:', error);
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
   };
 
   const options = type === 'match' 
@@ -1215,14 +1395,16 @@ const ResolveModal = ({ item, type, onClose, onSubmit }) => {
         <div className="flex space-x-2">
           <button
             type="submit"
-            className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Resolve
+            {isSubmitting ? 'Resolving...' : 'Resolve'}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
@@ -1437,9 +1619,9 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
         <AddPollLiquidityModal
           poll={showLiquidityModal}
           onClose={() => setShowLiquidityModal(null)}
-          onSubmit={(liquidity) => {
-            onAddLiquidity(showLiquidityModal._id, liquidity);
-            setShowLiquidityModal(null);
+          onSubmit={async (liquidity) => {
+            await onAddLiquidity(showLiquidityModal._id, liquidity);
+            // Modal will close itself after successful submission
           }}
         />
       )}
@@ -3408,14 +3590,26 @@ const AddLiquidityModal = ({ match, onClose, onSubmit }) => {
     teamBLiquidity: '',
     drawLiquidity: '',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSubmit({
-      teamALiquidity: parseFloat(formData.teamALiquidity) || 0,
-      teamBLiquidity: parseFloat(formData.teamBLiquidity) || 0,
-      drawLiquidity: parseFloat(formData.drawLiquidity) || 0,
-    });
+    setIsSubmitting(true);
+    
+    try {
+      await onSubmit({
+        teamALiquidity: parseFloat(formData.teamALiquidity) || 0,
+        teamBLiquidity: parseFloat(formData.teamBLiquidity) || 0,
+        drawLiquidity: parseFloat(formData.drawLiquidity) || 0,
+      });
+      // Only close modal after successful submission
+      onClose();
+    } catch (error) {
+      // Error already handled in onSubmit, just don't close modal
+      console.error('Error in add liquidity modal:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -3780,19 +3974,31 @@ const AddPollLiquidityModal = ({ poll, onClose, onSubmit }) => {
     optionIndex: '',
     optionLiquidity: '',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (poll.optionType === 'options') {
-      onSubmit({
-        optionIndex: parseInt(formData.optionIndex),
-        optionLiquidity: parseFloat(formData.optionLiquidity) || 0,
-      });
-    } else {
-      onSubmit({
-        yesLiquidity: parseFloat(formData.yesLiquidity) || 0,
-        noLiquidity: parseFloat(formData.noLiquidity) || 0,
-      });
+    setIsSubmitting(true);
+    
+    try {
+      if (poll.optionType === 'options') {
+        await onSubmit({
+          optionIndex: parseInt(formData.optionIndex),
+          optionLiquidity: parseFloat(formData.optionLiquidity) || 0,
+        });
+      } else {
+        await onSubmit({
+          yesLiquidity: parseFloat(formData.yesLiquidity) || 0,
+          noLiquidity: parseFloat(formData.noLiquidity) || 0,
+        });
+      }
+      // Only close modal after successful submission
+      onClose();
+    } catch (error) {
+      // Error already handled in onSubmit, just don't close modal
+      console.error('Error in add poll liquidity modal:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

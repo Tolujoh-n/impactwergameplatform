@@ -7,6 +7,8 @@ import { useWallet } from '../context/WalletContext';
 import {
   withdrawJackpot,
   setContractAddress,
+  setJackpotBalance,
+  getJackpotBalance,
 } from '../utils/blockchain';
 
 const Jackpot = () => {
@@ -105,9 +107,30 @@ const Jackpot = () => {
       return;
     }
     
+    if (!account) {
+      showNotification('Please connect your wallet first', 'error');
+      return;
+    }
+    
     // Wallet will auto-connect and switch network when blockchain function is called
     setWithdrawing(true);
     try {
+      // Check if balance is set on blockchain, if not, set it first
+      try {
+        const blockchainBalance = await getJackpotBalance(account);
+        const backendBalance = userStats?.jackpotBalance || 0;
+        
+        // If blockchain balance is less than backend balance, update it
+        if (parseFloat(blockchainBalance) < backendBalance) {
+          showNotification('Syncing balance with blockchain...', 'info');
+          await setJackpotBalance(account, backendBalance);
+          showNotification('Balance synced with blockchain', 'success');
+        }
+      } catch (syncError) {
+        console.warn('Could not sync balance, proceeding with withdrawal:', syncError);
+        // Continue anyway - the withdrawal will fail if balance isn't set
+      }
+      
       // Withdraw from blockchain first
       const txHash = await withdrawJackpot(parseFloat(withdrawAmount));
       showNotification(`Withdrawal sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');

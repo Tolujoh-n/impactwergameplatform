@@ -460,11 +460,31 @@ export const getClaimableBalance = async (marketId, userAddress) => {
   return weiToEth(balance);
 };
 
+// Set claimable balance for a user (admin only)
+export const setClaimableBalance = async (marketId, userAddress, amountEth) => {
+  await ensureWalletConnected();
+  const contract = await getContract();
+  const amountWei = ethToWei(amountEth);
+  const tx = await contract.setClaimableBalance(marketId, userAddress, amountWei);
+  await tx.wait();
+  return tx.hash;
+};
+
 // Get jackpot pool balance
 export const getJackpotPoolBalance = async () => {
   const contract = getContractReadOnly();
   const balance = await contract.jackpotPool();
   return weiToEth(balance);
+};
+
+// Set jackpot balance for a user (admin only)
+export const setJackpotBalance = async (userAddress, amountEth) => {
+  await ensureWalletConnected();
+  const contract = await getContract();
+  const amountWei = ethToWei(amountEth);
+  const tx = await contract.setJackpotBalance(userAddress, amountWei);
+  await tx.wait();
+  return tx.hash;
 };
 
 // Get wallet balance

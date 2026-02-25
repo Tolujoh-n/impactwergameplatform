@@ -522,7 +522,6 @@ router.post('/withdraw', auth, async (req, res) => {
     user.jackpotWithdrawn = (user.jackpotWithdrawn || 0) + withdrawAmount;
     await user.save();
     
-    // In real implementation, transfer ETH here
     res.json({ 
       message: 'Withdrawal successful', 
       withdrawn: withdrawAmount,
