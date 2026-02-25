@@ -161,10 +161,22 @@ const MatchDetail = () => {
             return;
           }
           
-          // Get item to get marketId
+          // Get item to get marketId - refresh to ensure we have latest data
           const currentItem = match || poll;
-          if (!currentItem || !currentItem.marketId) {
-            showNotification('Market not created on blockchain yet', 'error');
+          if (!currentItem) {
+            showNotification('Match/Poll data not found', 'error');
+            return;
+          }
+          
+          // Check if marketId exists and market is initialized
+          if (!currentItem.marketId) {
+            showNotification('Market not created on blockchain yet. Please wait for admin to create the market.', 'error');
+            console.error('MarketId missing for item:', currentItem._id, 'Item data:', currentItem);
+            return;
+          }
+          
+          if (!currentItem.marketInitialized) {
+            showNotification('Market is not initialized yet. Please wait for admin to initialize the market.', 'error');
             return;
           }
           
@@ -182,18 +194,25 @@ const MatchDetail = () => {
             normalizedOutcome = outcome.toUpperCase();
           }
           
-          // Stake on blockchain first
-          const txHash = await stakeBoost(currentItem.marketId, normalizedOutcome, parseFloat(amount));
-          showNotification(`Stake sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
-          
-          // Then create in backend
-          await api.post('/predictions/boost', {
-            [isPoll ? 'pollId' : 'matchId']: itemId,
-            outcome,
-            amount: parseFloat(amount),
-            type: 'boost',
-          });
-          showNotification('Boost prediction submitted successfully!', 'success');
+          try {
+            // Stake on blockchain first - wait for transaction to complete
+            showNotification('Sending transaction to blockchain...', 'info');
+            const txHash = await stakeBoost(currentItem.marketId, normalizedOutcome, parseFloat(amount));
+            showNotification(`Transaction confirmed! TX: ${txHash.slice(0, 10)}...`, 'success');
+            
+            // Then create in backend only after blockchain success
+            await api.post('/predictions/boost', {
+              [isPoll ? 'pollId' : 'matchId']: itemId,
+              outcome,
+              amount: parseFloat(amount),
+              type: 'boost',
+            });
+            showNotification('Boost prediction submitted successfully!', 'success');
+          } catch (blockchainError) {
+            console.error('Blockchain transaction failed:', blockchainError);
+            showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+            throw blockchainError; // Re-throw to prevent backend call
+          }
         }
       }
       
@@ -215,7 +234,13 @@ const MatchDetail = () => {
       
       const item = match || poll;
       if (!item || !item.marketId) {
-        showNotification('Market not found', 'error');
+        showNotification('Market not created on blockchain yet', 'error');
+        console.error('MarketId missing for item:', item?._id, 'Item data:', item);
+        return;
+      }
+      
+      if (!item.marketInitialized) {
+        showNotification('Market is not initialized yet', 'error');
         return;
       }
       
@@ -1387,9 +1412,15 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     
     try {
       if (tradeType === 'buy') {
-        // Get marketId
+        // Check if marketId exists and market is initialized
         if (!itemData.marketId) {
-          showNotification('Market not created on blockchain yet', 'error');
+          showNotification('Market not created on blockchain yet. Please wait for admin to create the market.', 'error');
+          console.error('MarketId missing for item:', itemData._id, 'Item data:', itemData);
+          return;
+        }
+        
+        if (!itemData.marketInitialized) {
+          showNotification('Market is not initialized yet. Please wait for admin to initialize the market.', 'error');
           return;
         }
         
@@ -1407,16 +1438,18 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           normalizedOutcome = normalizedOutcome.toUpperCase();
         }
         
-        // Buy on blockchain first
-        const txHash = await buyMarketShares(itemData.marketId, normalizedOutcome, parseFloat(amount));
-        showNotification(`Buy order sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
-        
-        // Then process in backend
-        const buyResponse = await api.post('/predictions/market/buy', {
-          [isPoll ? 'pollId' : 'matchId']: itemData._id,
-          outcome: selectedOption,
-          amount: parseFloat(amount),
-        });
+        try {
+          // Buy on blockchain first - wait for transaction to complete
+          showNotification('Sending transaction to blockchain...', 'info');
+          const txHash = await buyMarketShares(itemData.marketId, normalizedOutcome, parseFloat(amount));
+          showNotification(`Transaction confirmed! TX: ${txHash.slice(0, 10)}...`, 'success');
+          
+          // Then process in backend only after blockchain success
+          const buyResponse = await api.post('/predictions/market/buy', {
+            [isPoll ? 'pollId' : 'matchId']: itemData._id,
+            outcome: selectedOption,
+            amount: parseFloat(amount),
+          });
         
         // Update item immediately with response data if available
         if (buyResponse.data.updatedItem) {
@@ -1431,10 +1464,15 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           setPrices(buyResponse.data.updatedPrices);
         }
         
-        // Force refresh user predictions to get updated share values
-        await fetchUserMarketPrediction();
-        
-        showNotification('Buy order executed successfully!', 'success');
+          // Force refresh user predictions to get updated share values
+          await fetchUserMarketPrediction();
+          
+          showNotification('Buy order executed successfully!', 'success');
+        } catch (blockchainError) {
+          console.error('Blockchain transaction failed:', blockchainError);
+          showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+          return; // Exit early, don't process backend
+        }
       } else {
         // For sell, we need to specify outcome, shares or use 'max'
         if (!selectedOption) {
@@ -1501,16 +1539,18 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
         // Calculate actual shares to sell
         const actualShares = sharesToSell === 'max' ? availableShares : sharesToSell;
         
-        // Sell on blockchain first
-        const txHash = await sellMarketShares(itemData.marketId, normalizedOutcome, actualShares);
-        showNotification(`Sell order sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
-        
-        // Then process in backend
-        const sellResponse = await api.post('/predictions/market/sell', {
-          [isPoll ? 'pollId' : 'matchId']: itemData._id,
-          outcome: outcomeToSend, // Use the stored outcome from prediction
-          shares: sharesToSell,
-        });
+        try {
+          // Sell on blockchain first - wait for transaction to complete
+          showNotification('Sending transaction to blockchain...', 'info');
+          const txHash = await sellMarketShares(itemData.marketId, normalizedOutcome, actualShares);
+          showNotification(`Transaction confirmed! TX: ${txHash.slice(0, 10)}...`, 'success');
+          
+          // Then process in backend only after blockchain success
+          const sellResponse = await api.post('/predictions/market/sell', {
+            [isPoll ? 'pollId' : 'matchId']: itemData._id,
+            outcome: outcomeToSend, // Use the stored outcome from prediction
+            shares: sharesToSell,
+          });
         
         // Update item immediately with response data if available
         if (sellResponse.data.updatedItem) {
@@ -1525,10 +1565,15 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           setPrices(sellResponse.data.updatedPrices);
         }
         
-        // Force refresh user predictions to get updated share values
-        await fetchUserMarketPrediction();
-        
-        showNotification('Sell order executed successfully!', 'success');
+          // Force refresh user predictions to get updated share values
+          await fetchUserMarketPrediction();
+          
+          showNotification('Sell order executed successfully!', 'success');
+        } catch (blockchainError) {
+          console.error('Blockchain transaction failed:', blockchainError);
+          showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+          return; // Exit early, don't process backend
+        }
       }
       setAmount('');
       

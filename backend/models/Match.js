@@ -47,6 +47,9 @@ const matchSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  marketId: {
+    type: Number,
+  },
   marketInitialized: {
     type: Boolean,
     default: false,

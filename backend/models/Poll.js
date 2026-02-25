@@ -52,6 +52,9 @@ const pollSchema = new mongoose.Schema({
   result: {
     type: String,
   },
+  marketId: {
+    type: Number,
+  },
   marketInitialized: {
     type: Boolean,
     default: false,

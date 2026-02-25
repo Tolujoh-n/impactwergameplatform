@@ -192,11 +192,34 @@ export const createMarket = async (isPoll, options) => {
   
   // Find MarketCreated event in receipt
   if (receipt && receipt.logs) {
+    const iface = contract.interface;
+    const eventFragment = iface.getEvent('MarketCreated');
+    const eventTopic = eventFragment.topicHash;
+    
     for (const log of receipt.logs) {
       try {
-        const parsed = contract.interface.parseLog(log);
+        // Check if this is the MarketCreated event
+        if (log.topics && log.topics[0] === eventTopic) {
+          // marketId is the first indexed parameter, so it's in topics[1]
+          if (log.topics[1]) {
+            // Convert from hex string to number using ethers
+            const marketId = ethers.getNumber(log.topics[1]);
+            const marketIdStr = marketId.toString();
+            console.log('Market created with ID:', marketIdStr);
+            return marketIdStr;
+          }
+        }
+        
+        // Try parsing with interface
+        const parsed = iface.parseLog({
+          topics: Array.isArray(log.topics) ? log.topics : [],
+          data: log.data || '0x'
+        });
         if (parsed && parsed.name === 'MarketCreated') {
-          return parsed.args.marketId.toString();
+          const marketId = parsed.args.marketId;
+          const marketIdStr = marketId.toString ? marketId.toString() : String(marketId);
+          console.log('Market created with ID (parsed):', marketIdStr);
+          return marketIdStr;
         }
       } catch (e) {
         // Continue to next log
@@ -205,7 +228,7 @@ export const createMarket = async (isPoll, options) => {
     }
   }
   
-  // If event not found in receipt, try to get from transaction
+  // If event not found, throw error
   throw new Error('Market creation event not found. Transaction hash: ' + receipt.hash);
 };
 
@@ -435,6 +458,26 @@ export const getClaimableBalance = async (marketId, userAddress) => {
   const contract = getContractReadOnly();
   const balance = await contract.getClaimableBalance(marketId, userAddress);
   return weiToEth(balance);
+};
+
+// Get jackpot pool balance
+export const getJackpotPoolBalance = async () => {
+  const contract = getContractReadOnly();
+  const balance = await contract.jackpotPool();
+  return weiToEth(balance);
+};
+
+// Get wallet balance
+export const getWalletBalance = async (address) => {
+  if (!address) return '0';
+  try {
+    const provider = new ethers.JsonRpcProvider(BASE_TESTNET_PARAMS.rpcUrls[0]);
+    const balance = await provider.getBalance(address);
+    return weiToEth(balance);
+  } catch (error) {
+    console.error('Error getting wallet balance:', error);
+    return '0';
+  }
 };
 
 /**

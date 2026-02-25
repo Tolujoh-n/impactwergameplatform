@@ -1,14 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useWallet } from '../context/WalletContext';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { getWalletBalance } from '../utils/blockchain';
 
 const Profile = () => {
   const { user } = useAuth();
+  const { account, connect } = useWallet();
   const navigate = useNavigate();
   const [profileData, setProfileData] = useState(null);
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [walletBalance, setWalletBalance] = useState('0');
   const [filterType, setFilterType] = useState('all'); // 'all', 'free', 'boost', 'market'
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'pending', 'won', 'lost', 'settled'
   const [currentPage, setCurrentPage] = useState(1);
@@ -19,6 +23,22 @@ const Profile = () => {
       fetchProfileData();
     }
   }, [user]);
+
+  useEffect(() => {
+    const fetchWalletBalance = async () => {
+      if (account) {
+        try {
+          const balance = await getWalletBalance(account);
+          setWalletBalance(balance);
+        } catch (error) {
+          console.error('Error fetching wallet balance:', error);
+        }
+      } else {
+        setWalletBalance('0');
+      }
+    };
+    fetchWalletBalance();
+  }, [account]);
 
   // Reset to page 1 when filters change (must be before early returns)
   useEffect(() => {
@@ -137,6 +157,26 @@ const Profile = () => {
                 {stats.points} Points
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Total Points</div>
+              {account ? (
+                <div className="mt-2">
+                  <div className="text-lg font-semibold text-green-600 dark:text-green-400">
+                    {parseFloat(walletBalance).toFixed(4)} ETH
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-500">Wallet Balance</div>
+                </div>
+              ) : (
+                <div className="mt-2">
+                  <button
+                    onClick={connect}
+                    className="px-3 py-1 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Connect Wallet
+                  </button>
+                  <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                    Connect to view balance
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

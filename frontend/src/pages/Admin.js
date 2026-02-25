@@ -22,7 +22,6 @@ const Admin = () => {
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const { showNotification } = useNotification();
-  const { account, connect, isBaseSepolia } = useWallet();
   
   // Set contract address on mount
   useEffect(() => {
@@ -147,26 +146,30 @@ const Admin = () => {
       // Create market on blockchain first (auto-connects wallet and switches network if needed)
       const options = ['TeamA', 'Draw', 'TeamB'];
       const marketId = await createMarket(false, options);
-      showNotification(`Market created on blockchain! Market ID: ${marketId}`, 'success');
+      const marketIdNum = parseInt(marketId, 10);
+      showNotification(`Market created on blockchain! Market ID: ${marketIdNum}`, 'success');
+      
+      // Wait a moment to ensure the market is fully created on blockchain
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Add initial liquidity if provided
       if (matchData.marketTeamALiquidity > 0 || matchData.marketTeamBLiquidity > 0 || matchData.marketDrawLiquidity > 0) {
         if (matchData.marketTeamALiquidity > 0) {
-          await addLiquidity(parseInt(marketId), 'TeamA', matchData.marketTeamALiquidity);
+          await addLiquidity(marketIdNum, 'TeamA', matchData.marketTeamALiquidity);
         }
         if (matchData.marketTeamBLiquidity > 0) {
-          await addLiquidity(parseInt(marketId), 'TeamB', matchData.marketTeamBLiquidity);
+          await addLiquidity(marketIdNum, 'TeamB', matchData.marketTeamBLiquidity);
         }
         if (matchData.marketDrawLiquidity > 0) {
-          await addLiquidity(parseInt(marketId), 'Draw', matchData.marketDrawLiquidity);
+          await addLiquidity(marketIdNum, 'Draw', matchData.marketDrawLiquidity);
         }
         showNotification('Initial liquidity added on blockchain!', 'success');
       }
       
       // Create match in backend with marketId
-      const response = await api.post('/admin/matches', {
+      await api.post('/admin/matches', {
         ...matchData,
-        marketId: parseInt(marketId),
+        marketId: marketIdNum,
         marketInitialized: true,
       });
       
@@ -210,21 +213,27 @@ const Admin = () => {
         return;
       }
       
-      // Add liquidity on blockchain
-      if (liquidity.teamALiquidity > 0) {
-        await addLiquidity(match.marketId, 'TeamA', liquidity.teamALiquidity);
+      // Add liquidity on blockchain first
+      try {
+        if (liquidity.teamALiquidity > 0) {
+          await addLiquidity(match.marketId, 'TeamA', liquidity.teamALiquidity);
+        }
+        if (liquidity.teamBLiquidity > 0) {
+          await addLiquidity(match.marketId, 'TeamB', liquidity.teamBLiquidity);
+        }
+        if (liquidity.drawLiquidity > 0) {
+          await addLiquidity(match.marketId, 'Draw', liquidity.drawLiquidity);
+        }
+        
+        showNotification('Liquidity added on blockchain!', 'success');
+        
+        // Update backend only after blockchain success
+        await api.post(`/admin/matches/${matchId}/liquidity`, liquidity);
+      } catch (blockchainError) {
+        console.error('Blockchain transaction failed:', blockchainError);
+        showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+        throw blockchainError; // Re-throw to prevent backend call
       }
-      if (liquidity.teamBLiquidity > 0) {
-        await addLiquidity(match.marketId, 'TeamB', liquidity.teamBLiquidity);
-      }
-      if (liquidity.drawLiquidity > 0) {
-        await addLiquidity(match.marketId, 'Draw', liquidity.drawLiquidity);
-      }
-      
-      showNotification('Liquidity added on blockchain!', 'success');
-      
-      // Update backend
-      await api.post(`/admin/matches/${matchId}/liquidity`, liquidity);
       fetchData();
       showNotification('Liquidity added successfully!', 'success');
     } catch (error) {
@@ -256,11 +265,17 @@ const Admin = () => {
       }
       
       // Resolve on blockchain first
-      const txHash = await resolveMarket(match.marketId, winningOption);
-      showNotification(`Match resolved on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
-      
-      // Then resolve in backend
-      await api.post(`/admin/matches/${matchId}/resolve`, { result });
+      try {
+        const txHash = await resolveMarket(match.marketId, winningOption);
+        showNotification(`Match resolved on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+        
+        // Then resolve in backend only after blockchain success
+        await api.post(`/admin/matches/${matchId}/resolve`, { result });
+      } catch (blockchainError) {
+        console.error('Blockchain transaction failed:', blockchainError);
+        showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+        throw blockchainError; // Re-throw to prevent backend call
+      }
       fetchData();
       showNotification('Match resolved successfully!', 'success');
     } catch (error) {
@@ -283,22 +298,26 @@ const Admin = () => {
       }
       
       const marketId = await createMarket(true, options);
-      showNotification(`Market created on blockchain! Market ID: ${marketId}`, 'success');
+      const marketIdNum = parseInt(marketId, 10);
+      showNotification(`Market created on blockchain! Market ID: ${marketIdNum}`, 'success');
+      
+      // Wait a moment to ensure the market is fully created on blockchain
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Add initial liquidity if provided
       if (pollData.optionType === 'options' && pollData.options) {
         for (const opt of pollData.options) {
           if (opt.liquidity > 0) {
-            await addLiquidity(parseInt(marketId), opt.text, opt.liquidity);
+            await addLiquidity(marketIdNum, opt.text, opt.liquidity);
           }
         }
       } else {
         // Normal Yes/No poll
         if (pollData.marketYesLiquidity > 0) {
-          await addLiquidity(parseInt(marketId), 'YES', pollData.marketYesLiquidity);
+          await addLiquidity(marketIdNum, 'YES', pollData.marketYesLiquidity);
         }
         if (pollData.marketNoLiquidity > 0) {
-          await addLiquidity(parseInt(marketId), 'NO', pollData.marketNoLiquidity);
+          await addLiquidity(marketIdNum, 'NO', pollData.marketNoLiquidity);
         }
       }
       
@@ -308,9 +327,9 @@ const Admin = () => {
       }
       
       // Create poll in backend with marketId
-      const response = await api.post('/admin/polls', {
+      await api.post('/admin/polls', {
         ...pollData,
-        marketId: parseInt(marketId),
+        marketId: marketIdNum,
         marketInitialized: true,
       });
       
@@ -343,12 +362,18 @@ const Admin = () => {
       }
       
       // Resolve on blockchain first
-      const txHash = await resolveMarket(poll.marketId, winningOption);
-      showNotification(`Poll resolved on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
-      
-      // Then resolve in backend
-      const payload = optionIndex !== undefined ? { optionIndex } : { result };
-      await api.post(`/admin/polls/${pollId}/resolve`, payload);
+      try {
+        const txHash = await resolveMarket(poll.marketId, winningOption);
+        showNotification(`Poll resolved on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+        
+        // Then resolve in backend only after blockchain success
+        const payload = optionIndex !== undefined ? { optionIndex } : { result };
+        await api.post(`/admin/polls/${pollId}/resolve`, payload);
+      } catch (blockchainError) {
+        console.error('Blockchain transaction failed:', blockchainError);
+        showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+        throw blockchainError; // Re-throw to prevent backend call
+      }
       fetchData();
       showNotification('Poll resolved successfully!', 'success');
     } catch (error) {
@@ -389,29 +414,35 @@ const Admin = () => {
         return;
       }
       
-      // Add liquidity on blockchain
-      if (poll.optionType === 'options' && liquidity.options) {
-        for (const opt of liquidity.options) {
-          if (opt.liquidity > 0) {
-            await addLiquidity(poll.marketId, opt.text, opt.liquidity);
+      // Add liquidity on blockchain first
+      try {
+        if (poll.optionType === 'options' && liquidity.options) {
+          for (const opt of liquidity.options) {
+            if (opt.liquidity > 0) {
+              await addLiquidity(poll.marketId, opt.text, opt.liquidity);
+            }
+          }
+        } else {
+          // Normal Yes/No poll
+          if (liquidity.yesLiquidity > 0) {
+            await addLiquidity(poll.marketId, 'YES', liquidity.yesLiquidity);
+          }
+          if (liquidity.noLiquidity > 0) {
+            await addLiquidity(poll.marketId, 'NO', liquidity.noLiquidity);
           }
         }
-      } else {
-        // Normal Yes/No poll
-        if (liquidity.yesLiquidity > 0) {
-          await addLiquidity(poll.marketId, 'YES', liquidity.yesLiquidity);
-        }
-        if (liquidity.noLiquidity > 0) {
-          await addLiquidity(poll.marketId, 'NO', liquidity.noLiquidity);
-        }
+        
+        showNotification('Liquidity added on blockchain!', 'success');
+        
+        // Update backend only after blockchain success
+        await api.post(`/admin/polls/${pollId}/liquidity`, liquidity);
+        fetchData();
+        showNotification('Liquidity added successfully!', 'success');
+      } catch (blockchainError) {
+        console.error('Blockchain transaction failed:', blockchainError);
+        showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+        throw blockchainError; // Re-throw to prevent backend call
       }
-      
-      showNotification('Liquidity added on blockchain!', 'success');
-      
-      // Update backend
-      await api.post(`/admin/polls/${pollId}/liquidity`, liquidity);
-      fetchData();
-      showNotification('Liquidity added successfully!', 'success');
     } catch (error) {
       console.error('Error adding liquidity:', error);
       showNotification(error.message || 'Failed to add liquidity', 'error');
@@ -516,14 +547,20 @@ const Admin = () => {
       else if (updates.status === 'locked') statusValue = 2;
       else if (updates.status === 'resolved' || updates.status === 'completed') statusValue = 3;
       
-      // Update status on blockchain
-      const txHash = await updateMarketStatus(match.marketId, statusValue);
-      showNotification(`Status updated on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
-      
-      // Update in backend
-      await api.post(`/admin/matches/${matchId}/status`, updates);
-      fetchData();
-      showNotification('Status updated successfully!', 'success');
+      // Update status on blockchain first
+      try {
+        const txHash = await updateMarketStatus(match.marketId, statusValue);
+        showNotification(`Status updated on blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
+        
+        // Update in backend only after blockchain success
+        await api.post(`/admin/matches/${matchId}/status`, updates);
+        fetchData();
+        showNotification('Status updated successfully!', 'success');
+      } catch (blockchainError) {
+        console.error('Blockchain transaction failed:', blockchainError);
+        showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+        throw blockchainError; // Re-throw to prevent backend call
+      }
     } catch (error) {
       console.error('Error updating status:', error);
       showNotification(error.message || 'Failed to update status', 'error');
@@ -821,6 +858,7 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
     teamBImage: '',
   });
   const [availableStages, setAvailableStages] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (formData.cup) {
@@ -844,17 +882,26 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
     }
   }, [formData.cup, cups]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const selectedStage = availableStages.find(s => s._id === formData.stage);
-    onSubmit({
-      ...formData,
-      stageName: selectedStage?.name || formData.stageName,
-      marketTeamALiquidity: parseFloat(formData.marketTeamALiquidity) || 0,
-      marketTeamBLiquidity: parseFloat(formData.marketTeamBLiquidity) || 0,
-      marketDrawLiquidity: parseFloat(formData.marketDrawLiquidity) || 0,
-    });
-    onClose();
+    setIsSubmitting(true);
+    try {
+      const selectedStage = availableStages.find(s => s._id === formData.stage);
+      await onSubmit({
+        ...formData,
+        stageName: selectedStage?.name || formData.stageName,
+        marketTeamALiquidity: parseFloat(formData.marketTeamALiquidity) || 0,
+        marketTeamBLiquidity: parseFloat(formData.marketTeamBLiquidity) || 0,
+        marketDrawLiquidity: parseFloat(formData.marketDrawLiquidity) || 0,
+      });
+      // Only close modal after successful submission
+      onClose();
+    } catch (error) {
+      console.error('Error creating match:', error);
+      // Don't close modal on error
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -1055,14 +1102,16 @@ const CreateMatchModal = ({ cups, stages, onClose, onSubmit }) => {
         <div className="flex space-x-2">
           <button
             type="submit"
-            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Create
+            {isSubmitting ? 'Creating...' : 'Create'}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
@@ -1440,6 +1489,7 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
     lockedTime: '',
     options: [],
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const addOption = () => {
     setFormData({
@@ -1459,28 +1509,37 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
     setFormData({ ...formData, options: newOptions });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const submitData = {
-      ...formData,
-      isFeatured: formData.isFeatured || false,
-    };
+    setIsSubmitting(true);
+    try {
+      const submitData = {
+        ...formData,
+        isFeatured: formData.isFeatured || false,
+      };
 
-    if (formData.optionType === 'options') {
-      // Option-based poll
-      submitData.options = formData.options.map(opt => ({
-        text: opt.text,
-        image: opt.image || undefined,
-        liquidity: parseFloat(opt.liquidity) || 0,
-      }));
-    } else {
-      // Normal Yes/No poll
-      submitData.marketYesLiquidity = parseFloat(formData.marketYesLiquidity) || 0;
-      submitData.marketNoLiquidity = parseFloat(formData.marketNoLiquidity) || 0;
+      if (formData.optionType === 'options') {
+        // Option-based poll
+        submitData.options = formData.options.map(opt => ({
+          text: opt.text,
+          image: opt.image || undefined,
+          liquidity: parseFloat(opt.liquidity) || 0,
+        }));
+      } else {
+        // Normal Yes/No poll
+        submitData.marketYesLiquidity = parseFloat(formData.marketYesLiquidity) || 0;
+        submitData.marketNoLiquidity = parseFloat(formData.marketNoLiquidity) || 0;
+      }
+
+      await onSubmit(submitData);
+      // Only close modal after successful submission
+      onClose();
+    } catch (error) {
+      console.error('Error creating poll:', error);
+      // Don't close modal on error
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onSubmit(submitData);
-    onClose();
   };
 
   return (
@@ -1691,10 +1750,19 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
         </div>
 
         <div className="flex space-x-2">
-          <button type="submit" className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-            Create
+          <button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Creating...' : 'Create'}
           </button>
-          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg">
+          <button 
+            type="button" 
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             Cancel
           </button>
         </div>

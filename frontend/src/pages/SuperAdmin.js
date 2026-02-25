@@ -12,6 +12,7 @@ import {
   withdrawFromJackpotPool,
   setSuperAdmin as setSuperAdminOnChain,
   setContractAddress,
+  getJackpotPoolBalance,
 } from '../utils/blockchain';
 
 const SuperAdmin = () => {
@@ -23,6 +24,7 @@ const SuperAdmin = () => {
     freeJackpotFee: '',
   });
   const [contractBalance, setContractBalance] = useState('');
+  const [jackpotPoolBalance, setJackpotPoolBalance] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
   const [transferTo, setTransferTo] = useState('');
   const [superAdminAddress, setSuperAdminAddress] = useState('');
@@ -101,6 +103,15 @@ const SuperAdmin = () => {
       // Get from blockchain
       const balance = await getContractBalanceFromChain();
       setContractBalance(balance);
+      
+      // Also get jackpot pool balance
+      try {
+        const jackpotBalance = await getJackpotPoolBalance();
+        setJackpotPoolBalance(jackpotBalance);
+      } catch (jackpotError) {
+        console.error('Error getting jackpot pool balance:', jackpotError);
+      }
+      
       showNotification('Balance loaded from blockchain', 'success');
     } catch (error) {
       console.error('Error getting balance:', error);
@@ -154,7 +165,7 @@ const SuperAdmin = () => {
       const txHash = await fundJackpotPool(parseFloat(jackpotFundAmount));
       showNotification(`Jackpot pool funded! TX: ${txHash.slice(0, 10)}...`, 'success');
       setJackpotFundAmount('');
-      await handleGetBalance();
+      await handleGetBalance(); // This will also refresh jackpot pool balance
     } catch (error) {
       console.error('Error funding jackpot pool:', error);
       showNotification(error.message || 'Failed to fund jackpot pool', 'error');
@@ -248,6 +259,8 @@ const SuperAdmin = () => {
       fetchPolls();
     } else if (activeTab === 'fees') {
       handleGetFees();
+    } else if (activeTab === 'contract') {
+      handleGetBalance(); // Load balances when contract tab is opened
     }
   }, [activeTab]);
 
@@ -511,6 +524,23 @@ const SuperAdmin = () => {
               <div className="flex items-center space-x-4">
                 <p className="text-lg text-gray-700 dark:text-gray-300">
                   Balance: {contractBalance || 'N/A'} ETH
+                </p>
+                <button
+                  onClick={handleGetBalance}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                Jackpot Pool Balance
+              </h2>
+              <div className="flex items-center space-x-4">
+                <p className="text-lg text-gray-700 dark:text-gray-300">
+                  Pool Balance: {jackpotPoolBalance || 'N/A'} ETH
                 </p>
                 <button
                   onClick={handleGetBalance}

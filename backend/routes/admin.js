@@ -292,7 +292,7 @@ router.post('/upload-image', upload.single('image'), async (req, res) => {
 // Create Match with liquidity
 router.post('/matches', async (req, res) => {
   try {
-    const { teamA, teamB, date, cup, stage, stageName, marketTeamALiquidity, marketTeamBLiquidity, marketDrawLiquidity, isFeatured, isSponsored, sponsoredImages, lockedTime, teamAImage, teamBImage } = req.body;
+    const { teamA, teamB, date, cup, stage, stageName, marketId, marketTeamALiquidity, marketTeamBLiquidity, marketDrawLiquidity, isFeatured, isSponsored, sponsoredImages, lockedTime, teamAImage, teamBImage, marketInitialized } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -311,10 +311,11 @@ router.post('/matches', async (req, res) => {
       cup: cupDoc._id,
       stage: stageDoc?._id,
       stageName: stageDoc?.name || stageName,
+      marketId: marketId ? parseInt(marketId, 10) : undefined,
       marketTeamALiquidity: marketTeamALiquidity || 0,
       marketTeamBLiquidity: marketTeamBLiquidity || 0,
       marketDrawLiquidity: marketDrawLiquidity || 0,
-      marketInitialized: (marketTeamALiquidity > 0 || marketTeamBLiquidity > 0 || marketDrawLiquidity > 0),
+      marketInitialized: marketInitialized !== undefined ? marketInitialized : (marketTeamALiquidity > 0 || marketTeamBLiquidity > 0 || marketDrawLiquidity > 0),
       isFeatured: isFeatured || false,
       isSponsored: isSponsored || false,
       sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages.filter(img => img && img.trim() !== '') : [],
@@ -635,7 +636,7 @@ router.post('/matches/:id/resolve', async (req, res) => {
 // Create Poll with liquidity
 router.post('/polls', async (req, res) => {
   try {
-    const { question, description, type, cup, stage, marketYesLiquidity, marketNoLiquidity, isFeatured, isSponsored, sponsoredImages, lockedTime, optionType, options } = req.body;
+    const { question, description, type, cup, stage, marketId, marketYesLiquidity, marketNoLiquidity, isFeatured, isSponsored, sponsoredImages, lockedTime, optionType, options, marketInitialized } = req.body;
 
     const cupDoc = typeof cup === 'string' ? await Cup.findById(cup) : await Cup.findOne({ slug: cup });
     if (!cupDoc) {
@@ -653,6 +654,7 @@ router.post('/polls', async (req, res) => {
       type,
       cup: cupDoc._id,
       stage: stageDoc?._id,
+      marketId: marketId ? parseInt(marketId, 10) : undefined,
       isFeatured: isFeatured || false,
       isSponsored: isSponsored || false,
       sponsoredImages: Array.isArray(sponsoredImages) ? sponsoredImages.filter(img => img && img.trim() !== '') : [],
@@ -671,12 +673,12 @@ router.post('/polls', async (req, res) => {
       
       // Calculate total liquidity from options
       const totalLiquidity = options.reduce((sum, opt) => sum + (opt.liquidity || 0), 0);
-      pollData.marketInitialized = totalLiquidity > 0;
+      pollData.marketInitialized = marketInitialized !== undefined ? marketInitialized : (totalLiquidity > 0);
     } else {
       // Normal Yes/No poll
       pollData.marketYesLiquidity = marketYesLiquidity || 0;
       pollData.marketNoLiquidity = marketNoLiquidity || 0;
-      pollData.marketInitialized = (marketYesLiquidity > 0 || marketNoLiquidity > 0);
+      pollData.marketInitialized = marketInitialized !== undefined ? marketInitialized : (marketYesLiquidity > 0 || marketNoLiquidity > 0);
     }
 
     const poll = new Poll(pollData);
