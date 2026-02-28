@@ -312,6 +312,14 @@ const Admin = () => {
         if (jackpotBalanceCount > 0) {
           showNotification(`Set ${jackpotBalanceCount} jackpot balance(s) on blockchain`, 'success');
         }
+        // Sync claimable from backend so chain directly matches (runs after resolve)
+        try {
+          showNotification('Syncing claimable on chain…', 'info');
+          await handleSyncClaimableMatch(matchId);
+        } catch (syncErr) {
+          console.error('Sync claimable after resolve:', syncErr);
+          showNotification('Resolve succeeded but syncing claimable failed. You can use "Sync claimable" later.', 'warning');
+        }
       } catch (blockchainError) {
         console.error('Blockchain transaction failed:', blockchainError);
         showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
@@ -442,6 +450,14 @@ const Admin = () => {
         }
         if (jackpotBalanceCount > 0) {
           showNotification(`Set ${jackpotBalanceCount} jackpot balance(s) on blockchain`, 'success');
+        }
+        // Sync claimable from backend so chain directly matches (runs after resolve)
+        try {
+          showNotification('Syncing claimable on chain…', 'info');
+          await handleSyncClaimablePoll(pollId);
+        } catch (syncErr) {
+          console.error('Sync claimable after resolve:', syncErr);
+          showNotification('Resolve succeeded but syncing claimable failed. You can use "Sync claimable" later.', 'warning');
         }
       } catch (blockchainError) {
         console.error('Blockchain transaction failed:', blockchainError);
