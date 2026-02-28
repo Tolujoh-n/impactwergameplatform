@@ -208,6 +208,11 @@ router.post('/boost', auth, async (req, res) => {
     if (matchId) query.match = matchId;
     if (pollId) query.poll = pollId;
 
+    // Persist wallet address so admin resolve can set claimable balance on-chain
+    if (req.body.walletAddress && String(req.body.walletAddress).trim()) {
+      await User.findByIdAndUpdate(req.user._id, { walletAddress: String(req.body.walletAddress).trim() });
+    }
+
     const existingBoostPrediction = await Prediction.findOne(query);
 
     // If prediction exists and item is still upcoming, allow update
@@ -385,8 +390,11 @@ router.put('/:predictionId', auth, async (req, res) => {
 // Boost: Add or withdraw stake
 router.post('/boost/:predictionId/stake', auth, async (req, res) => {
   try {
+    if (req.body.walletAddress && String(req.body.walletAddress).trim()) {
+      await User.findByIdAndUpdate(req.user._id, { walletAddress: String(req.body.walletAddress).trim() });
+    }
     const { action, amount } = req.body; // action: 'add' or 'withdraw'
-    
+
     if (!['add', 'withdraw'].includes(action)) {
       return res.status(400).json({ message: 'Action must be "add" or "withdraw"' });
     }
@@ -472,6 +480,9 @@ router.post('/boost/:predictionId/stake', auth, async (req, res) => {
 // Market: Buy shares
 router.post('/market/buy', auth, async (req, res) => {
   try {
+    if (req.body.walletAddress && String(req.body.walletAddress).trim()) {
+      await User.findByIdAndUpdate(req.user._id, { walletAddress: String(req.body.walletAddress).trim() });
+    }
     const { matchId, pollId, outcome, amount } = req.body;
     
     if (!matchId && !pollId) {

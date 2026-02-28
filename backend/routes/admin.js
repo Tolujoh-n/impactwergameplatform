@@ -33,6 +33,66 @@ const upload = multer({
 router.use(auth);
 router.use(isAdmin);
 
+// Get claimable updates for a match (used when resolving - same data as resolve response)
+router.get('/claimable-updates/matches/:id', async (req, res) => {
+  try {
+    const match = await Match.findById(req.params.id);
+    if (!match || !match.marketId) {
+      return res.status(404).json({ message: 'Match not found or no marketId' });
+    }
+    const predsForClaim = await Prediction.find({
+      match: match._id,
+      type: { $in: ['boost', 'market'] },
+      status: 'settled',
+      payout: { $gt: 0 },
+    });
+    const claimableByWallet = {};
+    for (const p of predsForClaim) {
+      const userId = p.user?._id ? p.user._id : p.user;
+      if (!userId) continue;
+      const user = await User.findById(userId).select('walletAddress').lean();
+      const walletAddress = user?.walletAddress || (p.user?.walletAddress);
+      if (!walletAddress || !String(walletAddress).trim()) continue;
+      const w = String(walletAddress).trim();
+      claimableByWallet[w] = (claimableByWallet[w] || 0) + (p.payout || 0);
+    }
+    const claimableUpdates = Object.entries(claimableByWallet).map(([walletAddress, amount]) => ({ walletAddress, amount }));
+    res.json({ marketId: match.marketId, claimableUpdates });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get claimable updates for a poll (used when resolving - same data as resolve response)
+router.get('/claimable-updates/polls/:id', async (req, res) => {
+  try {
+    const poll = await Poll.findById(req.params.id);
+    if (!poll || !poll.marketId) {
+      return res.status(404).json({ message: 'Poll not found or no marketId' });
+    }
+    const predsForClaim = await Prediction.find({
+      poll: poll._id,
+      type: { $in: ['boost', 'market'] },
+      status: 'settled',
+      payout: { $gt: 0 },
+    });
+    const claimableByWallet = {};
+    for (const p of predsForClaim) {
+      const userId = p.user?._id ? p.user._id : p.user;
+      if (!userId) continue;
+      const user = await User.findById(userId).select('walletAddress').lean();
+      const walletAddress = user?.walletAddress || (p.user?.walletAddress);
+      if (!walletAddress || !String(walletAddress).trim()) continue;
+      const w = String(walletAddress).trim();
+      claimableByWallet[w] = (claimableByWallet[w] || 0) + (p.payout || 0);
+    }
+    const claimableUpdates = Object.entries(claimableByWallet).map(([walletAddress, amount]) => ({ walletAddress, amount }));
+    res.json({ marketId: poll.marketId, claimableUpdates });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Admin dashboard stats
 router.get('/stats', async (req, res) => {
   try {
@@ -628,17 +688,26 @@ router.post('/matches/:id/resolve', async (req, res) => {
     await match.save();
 
     // Build claimable and jackpot updates for frontend to set on blockchain
-    const predsWithUser = await Prediction.find({ match: match._id }).populate('user', 'walletAddress jackpotBalance');
+    const predsForClaim = await Prediction.find({
+      match: match._id,
+      type: { $in: ['boost', 'market'] },
+      status: 'settled',
+      payout: { $gt: 0 },
+    });
     const claimableByWallet = {};
-    for (const p of predsWithUser) {
-      if ((p.type === 'boost' || p.type === 'market') && p.status === 'settled' && p.payout > 0 && p.user?.walletAddress) {
-        const w = p.user.walletAddress;
-        claimableByWallet[w] = (claimableByWallet[w] || 0) + p.payout;
-      }
+    for (const p of predsForClaim) {
+      const userId = p.user?._id ? p.user._id : p.user;
+      if (!userId) continue;
+      const user = await User.findById(userId).select('walletAddress').lean();
+      const walletAddress = user?.walletAddress || (p.user?.walletAddress);
+      if (!walletAddress || !walletAddress.trim()) continue;
+      const w = walletAddress.trim();
+      claimableByWallet[w] = (claimableByWallet[w] || 0) + (p.payout || 0);
     }
     const claimableUpdates = Object.entries(claimableByWallet).map(([walletAddress, amount]) => ({ walletAddress, amount }));
+    const predsWithUserForJackpot = await Prediction.find({ match: match._id }).populate('user', 'walletAddress jackpotBalance');
     const jackpotUserIds = [...new Set(
-      predsWithUser.filter(p => (p.type === 'free' || p.type === 'boost') && p.status === 'won').map(p => p.user?._id?.toString()).filter(Boolean)
+      predsWithUserForJackpot.filter(p => (p.type === 'free' || p.type === 'boost') && p.status === 'won').map(p => (p.user?._id || p.user)?.toString()).filter(Boolean)
     )];
     const jackpotUpdates = [];
     for (const uid of jackpotUserIds) {
@@ -1053,17 +1122,26 @@ router.post('/polls/:id/resolve', async (req, res) => {
     await poll.save();
 
     // Build claimable and jackpot updates for frontend to set on blockchain
-    const predsWithUser = await Prediction.find({ poll: poll._id }).populate('user', 'walletAddress jackpotBalance');
-    const claimableByWallet = {};
-    for (const p of predsWithUser) {
-      if ((p.type === 'boost' || p.type === 'market') && p.status === 'settled' && p.payout > 0 && p.user?.walletAddress) {
-        const w = p.user.walletAddress;
-        claimableByWallet[w] = (claimableByWallet[w] || 0) + p.payout;
-      }
+    const predsForClaimPoll = await Prediction.find({
+      poll: poll._id,
+      type: { $in: ['boost', 'market'] },
+      status: 'settled',
+      payout: { $gt: 0 },
+    });
+    const claimableByWalletPoll = {};
+    for (const p of predsForClaimPoll) {
+      const userId = p.user?._id ? p.user._id : p.user;
+      if (!userId) continue;
+      const user = await User.findById(userId).select('walletAddress').lean();
+      const walletAddress = user?.walletAddress || (p.user?.walletAddress);
+      if (!walletAddress || !walletAddress.trim()) continue;
+      const w = walletAddress.trim();
+      claimableByWalletPoll[w] = (claimableByWalletPoll[w] || 0) + (p.payout || 0);
     }
-    const claimableUpdates = Object.entries(claimableByWallet).map(([walletAddress, amount]) => ({ walletAddress, amount }));
+    const claimableUpdates = Object.entries(claimableByWalletPoll).map(([walletAddress, amount]) => ({ walletAddress, amount }));
+    const predsWithUserForJackpotPoll = await Prediction.find({ poll: poll._id }).populate('user', 'walletAddress jackpotBalance');
     const jackpotUserIds = [...new Set(
-      predsWithUser.filter(p => (p.type === 'free' || p.type === 'boost') && p.status === 'won').map(p => p.user?._id?.toString()).filter(Boolean)
+      predsWithUserForJackpotPoll.filter(p => (p.type === 'free' || p.type === 'boost') && p.status === 'won').map(p => (p.user?._id || p.user)?.toString()).filter(Boolean)
     )];
     const jackpotUpdates = [];
     for (const uid of jackpotUserIds) {

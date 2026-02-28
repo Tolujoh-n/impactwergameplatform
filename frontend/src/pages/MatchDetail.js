@@ -199,12 +199,13 @@ const MatchDetail = () => {
             const txHash = await stakeBoost(currentItem.marketId, normalizedOutcome, parseFloat(amount));
             showNotification(`Transaction confirmed! TX: ${txHash.slice(0, 10)}...`, 'success');
             
-            // Then create in backend only after blockchain success
+            // Then create in backend only after blockchain success (send wallet so backend can set claimable on resolve)
             await api.post('/predictions/boost', {
               [isPoll ? 'pollId' : 'matchId']: itemId,
               outcome,
               amount: parseFloat(amount),
               type: 'boost',
+              walletAddress: account || undefined,
             });
             showNotification('Boost prediction submitted successfully!', 'success');
           } catch (blockchainError) {
@@ -302,6 +303,7 @@ const MatchDetail = () => {
         await api.post(`/predictions/boost/${actualPredictionId}/stake`, {
           action,
           amount: parseFloat(amount),
+          walletAddress: account || undefined,
         });
         showNotification(`Stake ${action === 'add' ? 'added' : 'withdrawn'} successfully!`, 'success');
         await fetchUserPrediction();
@@ -1484,6 +1486,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
             [isPoll ? 'pollId' : 'matchId']: itemData._id,
             outcome: selectedOption,
             amount: parseFloat(amount),
+            walletAddress: account || undefined,
           });
         
         // Update item immediately with response data if available

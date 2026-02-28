@@ -275,8 +275,12 @@ const Admin = () => {
         const resolveResponse = await api.post(`/admin/matches/${matchId}/resolve`, { result });
         const { match: resolvedMatch, claimableUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
         
-        // Set claimable and jackpot balances on blockchain from backend response
+        // Set claimable and jackpot balances on blockchain so Boost/Market winners can claim immediately
         const marketId = match.marketId;
+        const totalToSet = claimableUpdates.length + jackpotUpdates.length;
+        if (totalToSet > 0) {
+          showNotification(`Setting ${totalToSet} balance(s) on chain so participants can claim…`, 'info');
+        }
         let setBalanceCount = 0;
         for (const { walletAddress, amount } of claimableUpdates) {
           try {
@@ -401,10 +405,13 @@ const Admin = () => {
         const resolveResponse = await api.post(`/admin/polls/${pollId}/resolve`, payload);
         const { poll: resolvedPoll, claimableUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
         
-        // Set claimable and jackpot balances on blockchain from backend response
+        // Set claimable and jackpot balances on blockchain so Boost/Market winners can claim immediately
         const marketId = poll.marketId;
+        const totalToSet = claimableUpdates.length + jackpotUpdates.length;
+        if (totalToSet > 0) {
+          showNotification(`Setting ${totalToSet} balance(s) on chain so participants can claim…`, 'info');
+        }
         let setBalanceCount = 0;
-        
         for (const { walletAddress, amount } of claimableUpdates) {
           try {
             await setClaimableBalance(marketId, walletAddress, amount);
@@ -439,6 +446,48 @@ const Admin = () => {
     } catch (error) {
       console.error('Error resolving poll:', error);
       showNotification(error.message || 'Failed to resolve poll', 'error');
+    }
+  };
+
+  const handleSyncClaimableMatch = async (matchId) => {
+    try {
+      const { data } = await api.get(`/admin/claimable-updates/matches/${matchId}`);
+      const { marketId, claimableUpdates = [] } = data || {};
+      if (!marketId || !claimableUpdates.length) {
+        showNotification('No claimable updates for this match', 'info');
+        return;
+      }
+      let count = 0;
+      for (const { walletAddress, amount } of claimableUpdates) {
+        await setClaimableBalance(marketId, walletAddress, amount);
+        count++;
+      }
+      showNotification(`Synced ${count} claimable balance(s) on chain`, 'success');
+      fetchData();
+    } catch (error) {
+      console.error('Error syncing claimable:', error);
+      showNotification(error.response?.data?.message || error.message || 'Failed to sync claimable', 'error');
+    }
+  };
+
+  const handleSyncClaimablePoll = async (pollId) => {
+    try {
+      const { data } = await api.get(`/admin/claimable-updates/polls/${pollId}`);
+      const { marketId, claimableUpdates = [] } = data || {};
+      if (!marketId || !claimableUpdates.length) {
+        showNotification('No claimable updates for this poll', 'info');
+        return;
+      }
+      let count = 0;
+      for (const { walletAddress, amount } of claimableUpdates) {
+        await setClaimableBalance(marketId, walletAddress, amount);
+        count++;
+      }
+      showNotification(`Synced ${count} claimable balance(s) on chain`, 'success');
+      fetchData();
+    } catch (error) {
+      console.error('Error syncing claimable:', error);
+      showNotification(error.response?.data?.message || error.message || 'Failed to sync claimable', 'error');
     }
   };
 
@@ -663,6 +712,7 @@ const Admin = () => {
             onCreateMatch={handleCreateMatch}
             onUpdateMatch={handleUpdateMatch}
             onResolveMatch={handleResolveMatch}
+            onSyncClaimable={handleSyncClaimableMatch}
             onUpdateStatus={handleUpdateStatus}
             onDeleteMatch={handleDeleteMatch}
             onAddLiquidity={handleAddMatchLiquidity}
@@ -676,6 +726,7 @@ const Admin = () => {
             loading={loading}
             onCreatePoll={handleCreatePoll}
             onResolvePoll={handleResolvePoll}
+            onSyncClaimable={handleSyncClaimablePoll}
             onUpdatePoll={handleUpdatePoll}
             onUpdatePollStatus={handleUpdatePollStatus}
             onAddLiquidity={handleAddPollLiquidity}
@@ -719,7 +770,7 @@ const Admin = () => {
   );
 };
 
-const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMatch, onResolveMatch, onUpdateStatus, onDeleteMatch, onAddLiquidity }) => {
+const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMatch, onResolveMatch, onSyncClaimable, onUpdateStatus, onDeleteMatch, onAddLiquidity }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
   const [showStatusModal, setShowStatusModal] = useState(null);
@@ -802,6 +853,15 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
                         className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
                       >
                         Resolve
+                      </button>
+                    )}
+                    {match.isResolved && match.marketId && (
+                      <button
+                        onClick={() => onSyncClaimable(match._id)}
+                        className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-xs"
+                        title="Sync claimable balances on chain (fix Market/Boost claim)"
+                      >
+                        Sync claimable
                       </button>
                     )}
                     <button
@@ -1363,7 +1423,7 @@ const StatusModal = ({ match, onClose, onSubmit }) => {
   );
 };
 
-const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, onUpdatePoll, onUpdatePollStatus, onAddLiquidity, onDeletePoll }) => {
+const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, onSyncClaimable, onUpdatePoll, onUpdatePollStatus, onAddLiquidity, onDeletePoll }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
   const [showEditModal, setShowEditModal] = useState(null);
@@ -1445,6 +1505,15 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
                           className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
                         >
                           Resolve
+                        </button>
+                      )}
+                      {poll.isResolved && poll.marketId && (
+                        <button
+                          onClick={() => onSyncClaimable(poll._id)}
+                          className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-xs"
+                          title="Sync claimable balances on chain (fix Market/Boost claim)"
+                        >
+                          Sync claimable
                         </button>
                       )}
                       <button
