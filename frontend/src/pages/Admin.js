@@ -15,6 +15,8 @@ import Modal from '../components/Modal';
 import TiptapEditor from '../components/TiptapEditor';
 import ImageUpload from '../components/ImageUpload';
 
+const ITEMS_PER_PAGE = 20;
+
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('matches');
   const [matches, setMatches] = useState([]);
@@ -23,7 +25,12 @@ const Admin = () => {
   const [polls, setPolls] = useState([]);
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [tablePage, setTablePage] = useState(1);
   const { showNotification } = useNotification();
+
+  useEffect(() => {
+    setTablePage(1);
+  }, [activeTab]);
   
   // Set contract address on mount
   useEffect(() => {
@@ -709,6 +716,9 @@ const Admin = () => {
             cups={cups}
             stages={stages}
             loading={loading}
+            tablePage={tablePage}
+            setTablePage={setTablePage}
+            itemsPerPage={ITEMS_PER_PAGE}
             onCreateMatch={handleCreateMatch}
             onUpdateMatch={handleUpdateMatch}
             onResolveMatch={handleResolveMatch}
@@ -724,6 +734,9 @@ const Admin = () => {
             cups={cups}
             stages={stages}
             loading={loading}
+            tablePage={tablePage}
+            setTablePage={setTablePage}
+            itemsPerPage={ITEMS_PER_PAGE}
             onCreatePoll={handleCreatePoll}
             onResolvePoll={handleResolvePoll}
             onSyncClaimable={handleSyncClaimablePoll}
@@ -736,7 +749,10 @@ const Admin = () => {
         {activeTab === 'cups' && (
           <CupsTab 
             cups={cups} 
-            loading={loading} 
+            loading={loading}
+            tablePage={tablePage}
+            setTablePage={setTablePage}
+            itemsPerPage={ITEMS_PER_PAGE}
             onCreateCup={handleCreateCup}
             onUpdateCup={handleUpdateCup}
             onDeleteCup={handleDeleteCup}
@@ -748,6 +764,9 @@ const Admin = () => {
             cups={cups}
             stages={stages}
             loading={loading}
+            tablePage={tablePage}
+            setTablePage={setTablePage}
+            itemsPerPage={ITEMS_PER_PAGE}
             onCreateStage={handleCreateStage}
             onUpdateStage={handleUpdateStage}
             onDeleteStage={handleDeleteStage}
@@ -757,6 +776,9 @@ const Admin = () => {
           <BlogsTab
             blogs={blogs}
             loading={loading}
+            tablePage={tablePage}
+            setTablePage={setTablePage}
+            itemsPerPage={ITEMS_PER_PAGE}
             onCreateBlog={handleCreateBlog}
             onUpdateBlog={handleUpdateBlog}
             onDeleteBlog={handleDeleteBlog}
@@ -770,7 +792,7 @@ const Admin = () => {
   );
 };
 
-const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMatch, onResolveMatch, onSyncClaimable, onUpdateStatus, onDeleteMatch, onAddLiquidity }) => {
+const MatchesTab = ({ matches, cups, stages, loading, tablePage, setTablePage, itemsPerPage, onCreateMatch, onUpdateMatch, onResolveMatch, onSyncClaimable, onUpdateStatus, onDeleteMatch, onAddLiquidity }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
   const [showStatusModal, setShowStatusModal] = useState(null);
@@ -807,7 +829,9 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {matches.map((match) => (
+            {(() => {
+              const paginatedMatches = matches.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
+              return paginatedMatches.map((match) => (
               <tr key={match._id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                   {match.teamA} vs {match.teamB}
@@ -873,10 +897,32 @@ const MatchesTab = ({ matches, cups, stages, loading, onCreateMatch, onUpdateMat
                   </div>
                 </td>
               </tr>
-            ))}
+            ));
+            })()}
           </tbody>
         </table>
         </div>
+        {matches.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+              disabled={tablePage <= 1}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Page {tablePage} of {Math.max(1, Math.ceil(matches.length / itemsPerPage))} ({matches.length} total)
+            </span>
+            <button
+              onClick={() => setTablePage((p) => Math.min(Math.ceil(matches.length / itemsPerPage), p + 1))}
+              disabled={tablePage >= Math.ceil(matches.length / itemsPerPage)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       {showCreateModal && (
@@ -1423,7 +1469,7 @@ const StatusModal = ({ match, onClose, onSubmit }) => {
   );
 };
 
-const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, onSyncClaimable, onUpdatePoll, onUpdatePollStatus, onAddLiquidity, onDeletePoll }) => {
+const PollsTab = ({ polls, cups, stages, loading, tablePage, setTablePage, itemsPerPage, onCreatePoll, onResolvePoll, onSyncClaimable, onUpdatePoll, onUpdatePollStatus, onAddLiquidity, onDeletePoll }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(null);
   const [showEditModal, setShowEditModal] = useState(null);
@@ -1458,8 +1504,10 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {polls.length > 0 ? (
-              polls.map((poll) => (
+            {(() => {
+              const paginatedPolls = polls.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
+              return polls.length > 0 ? (
+              paginatedPolls.map((poll) => (
                 <tr key={poll._id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                     {poll.question}
@@ -1532,10 +1580,32 @@ const PollsTab = ({ polls, cups, stages, loading, onCreatePoll, onResolvePoll, o
                   No polls found. Create one to get started!
                 </td>
               </tr>
-            )}
+            );
+            })()}
           </tbody>
         </table>
         </div>
+        {polls.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+              disabled={tablePage <= 1}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Page {tablePage} of {Math.max(1, Math.ceil(polls.length / itemsPerPage))} ({polls.length} total)
+            </span>
+            <button
+              onClick={() => setTablePage((p) => Math.min(Math.ceil(polls.length / itemsPerPage), p + 1))}
+              disabled={tablePage >= Math.ceil(polls.length / itemsPerPage)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
       
       {showCreateModal && (
@@ -1913,7 +1983,7 @@ const CreatePollModal = ({ cups, stages, onClose, onSubmit }) => {
   );
 };
 
-const CupsTab = ({ cups, loading, onCreateCup, onUpdateCup, onDeleteCup, onUpdateNavbarOrder }) => {
+const CupsTab = ({ cups, loading, tablePage, setTablePage, itemsPerPage, onCreateCup, onUpdateCup, onDeleteCup, onUpdateNavbarOrder }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
@@ -2041,8 +2111,10 @@ const CupsTab = ({ cups, loading, onCreateCup, onUpdateCup, onDeleteCup, onUpdat
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {cups.length > 0 ? (
-              cups.map((cup) => (
+            {(() => {
+              const paginatedCups = cups.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
+              return cups.length > 0 ? (
+              paginatedCups.map((cup) => (
                 <tr key={cup._id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                     {cup.name}
@@ -2100,10 +2172,32 @@ const CupsTab = ({ cups, loading, onCreateCup, onUpdateCup, onDeleteCup, onUpdat
                   No cups found. Create one to get started!
                 </td>
               </tr>
-            )}
+            );
+            })()}
           </tbody>
         </table>
         </div>
+        {cups.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+              disabled={tablePage <= 1}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Page {tablePage} of {Math.max(1, Math.ceil(cups.length / itemsPerPage))} ({cups.length} total)
+            </span>
+            <button
+              onClick={() => setTablePage((p) => Math.min(Math.ceil(cups.length / itemsPerPage), p + 1))}
+              disabled={tablePage >= Math.ceil(cups.length / itemsPerPage)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
       
       {showCreateModal && (
@@ -2330,7 +2424,7 @@ const EditCupModal = ({ cup, onClose, onSubmit }) => {
   );
 };
 
-const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDeleteStage }) => {
+const StagesTab = ({ cups, stages, loading, tablePage, setTablePage, itemsPerPage, onCreateStage, onUpdateStage, onDeleteStage }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(null);
   const [selectedCup, setSelectedCup] = useState(null);
@@ -2394,7 +2488,9 @@ const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDele
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredStages.map((stage) => (
+            {(() => {
+              const paginatedStages = filteredStages.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
+              return paginatedStages.map((stage) => (
               <tr key={stage._id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                   {stage.order}
@@ -2456,10 +2552,32 @@ const StagesTab = ({ cups, stages, loading, onCreateStage, onUpdateStage, onDele
                   </button>
                 </td>
               </tr>
-            ))}
+            ));
+            })()}
           </tbody>
         </table>
         </div>
+        {filteredStages.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+              disabled={tablePage <= 1}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Page {tablePage} of {Math.max(1, Math.ceil(filteredStages.length / itemsPerPage))} ({filteredStages.length} total)
+            </span>
+            <button
+              onClick={() => setTablePage((p) => Math.min(Math.ceil(filteredStages.length / itemsPerPage), p + 1))}
+              disabled={tablePage >= Math.ceil(filteredStages.length / itemsPerPage)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       {filteredStages.length === 0 && (
@@ -2646,7 +2764,7 @@ const EditStageModal = ({ stage, cups, onClose, onSubmit }) => {
   );
 };
 
-const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) => {
+const BlogsTab = ({ blogs, loading, tablePage, setTablePage, itemsPerPage, onCreateBlog, onUpdateBlog, onDeleteBlog }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
@@ -2679,7 +2797,9 @@ const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) 
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {blogs.map((blog) => (
+            {(() => {
+              const paginatedBlogs = blogs.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
+              return paginatedBlogs.map((blog) => (
               <tr key={blog._id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                   {blog.title}
@@ -2721,10 +2841,32 @@ const BlogsTab = ({ blogs, loading, onCreateBlog, onUpdateBlog, onDeleteBlog }) 
                   </button>
                 </td>
               </tr>
-            ))}
+            ));
+            })()}
           </tbody>
         </table>
         </div>
+        {blogs.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+              disabled={tablePage <= 1}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Page {tablePage} of {Math.max(1, Math.ceil(blogs.length / itemsPerPage))} ({blogs.length} total)
+            </span>
+            <button
+              onClick={() => setTablePage((p) => Math.min(Math.ceil(blogs.length / itemsPerPage), p + 1))}
+              disabled={tablePage >= Math.ceil(blogs.length / itemsPerPage)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       {blogs.length === 0 && (

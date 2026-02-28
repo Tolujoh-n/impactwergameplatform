@@ -105,7 +105,7 @@ router.get('/matches', async (req, res) => {
     const matches = await Match.find()
       .populate('cup', 'name slug')
       .populate('stage', 'name')
-      .select('teamA teamB date status isResolved freeJackpotPool boostJackpotPool platformFees cup stage createdAt')
+      .select('teamA teamB date status isResolved freeJackpotPool boostJackpotPool originalFreeJackpotPool originalBoostJackpotPool platformFees cup stage createdAt')
       .sort({ createdAt: -1 });
     
     res.json(matches);
@@ -120,7 +120,7 @@ router.get('/polls', async (req, res) => {
     const polls = await Poll.find()
       .populate('cup', 'name slug')
       .populate('stage', 'name')
-      .select('question type status isResolved freeJackpotPool boostJackpotPool platformFees cup stage createdAt')
+      .select('question type status isResolved freeJackpotPool boostJackpotPool originalFreeJackpotPool originalBoostJackpotPool platformFees cup stage createdAt')
       .sort({ createdAt: -1 });
     
     res.json(polls);

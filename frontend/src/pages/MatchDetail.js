@@ -1183,6 +1183,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
   const [tradeType, setTradeType] = useState('buy');
   const [amount, setAmount] = useState('');
   const [trades, setTrades] = useState([]);
+  const [tradesTablePage, setTradesTablePage] = useState(1);
+  const TRADES_PER_PAGE = 20;
   const [predictions, setPredictions] = useState({}); // Map of outcome -> prediction
   const [prices, setPrices] = useState({});
   const [priceAmounts, setPriceAmounts] = useState({}); // ETH amounts for each option
@@ -1354,6 +1356,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
       const itemId = (currentItem || item)?._id || item?._id;
       const response = await api.get(`/predictions/market/${itemId}/data?type=${isPoll ? 'poll' : 'match'}`);
       setTrades(response.data.recentTrades || []);
+      setTradesTablePage(1);
       
       // Update prices from API
       if (response.data.prices) {
@@ -1856,7 +1859,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {trades.length > 0 ? (
-                      trades.map((trade, index) => {
+                      trades.slice((tradesTablePage - 1) * TRADES_PER_PAGE, tradesTablePage * TRADES_PER_PAGE).map((trade, index) => {
                         // Handle API response format
                         const tradeOption = trade.outcome || '';
                         const tradeShares = trade.shares || 0;
@@ -1967,6 +1970,27 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                   </tbody>
                 </table>
               </div>
+              {trades.length > TRADES_PER_PAGE && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700 mt-2">
+                  <button
+                    onClick={() => setTradesTablePage((p) => Math.max(1, p - 1))}
+                    disabled={tradesTablePage <= 1}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Page {tradesTablePage} of {Math.ceil(trades.length / TRADES_PER_PAGE)} ({trades.length} total)
+                  </span>
+                  <button
+                    onClick={() => setTradesTablePage((p) => Math.min(Math.ceil(trades.length / TRADES_PER_PAGE), p + 1))}
+                    disabled={tradesTablePage >= Math.ceil(trades.length / TRADES_PER_PAGE)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

@@ -18,6 +18,8 @@ import {
   withdrawFromClaimPredictionWinsPool,
 } from '../utils/blockchain';
 
+const ITEMS_PER_PAGE = 20;
+
 const SuperAdmin = () => {
   const [activeTab, setActiveTab] = useState('fees');
   const [feeSettings, setFeeSettings] = useState({
@@ -43,8 +45,13 @@ const SuperAdmin = () => {
   const [claimPoolFundAmount, setClaimPoolFundAmount] = useState('');
   const [claimPoolWithdrawAmount, setClaimPoolWithdrawAmount] = useState('');
   const [claimPoolWithdrawTo, setClaimPoolWithdrawTo] = useState('');
+  const [tablePage, setTablePage] = useState(1);
   const { showNotification } = useNotification();
   const { account, connect, isBaseSepolia } = useWallet();
+
+  useEffect(() => {
+    setTablePage(1);
+  }, [activeTab]);
   
   // Set contract address on mount (should be from env or config)
   useEffect(() => {
@@ -444,7 +451,7 @@ const SuperAdmin = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {matches.map((match) => (
+                    {matches.slice((tablePage - 1) * ITEMS_PER_PAGE, tablePage * ITEMS_PER_PAGE).map((match) => (
                       <tr key={match._id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                           {match.teamA} vs {match.teamB}
@@ -478,6 +485,27 @@ const SuperAdmin = () => {
                     No matches found
                   </div>
                 )}
+                {matches.length > ITEMS_PER_PAGE && (
+                  <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                      disabled={tablePage <= 1}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Page {tablePage} of {Math.max(1, Math.ceil(matches.length / ITEMS_PER_PAGE))} ({matches.length} total)
+                    </span>
+                    <button
+                      onClick={() => setTablePage((p) => Math.min(Math.ceil(matches.length / ITEMS_PER_PAGE), p + 1))}
+                      disabled={tablePage >= Math.ceil(matches.length / ITEMS_PER_PAGE)}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -506,7 +534,7 @@ const SuperAdmin = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {polls.map((poll) => (
+                    {polls.slice((tablePage - 1) * ITEMS_PER_PAGE, tablePage * ITEMS_PER_PAGE).map((poll) => (
                       <tr key={poll._id}>
                         <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">
                           {poll.question}
@@ -538,6 +566,27 @@ const SuperAdmin = () => {
                 {polls.length === 0 && (
                   <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                     No polls found
+                  </div>
+                )}
+                {polls.length > ITEMS_PER_PAGE && (
+                  <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                      disabled={tablePage <= 1}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Page {tablePage} of {Math.max(1, Math.ceil(polls.length / ITEMS_PER_PAGE))} ({polls.length} total)
+                    </span>
+                    <button
+                      onClick={() => setTablePage((p) => Math.min(Math.ceil(polls.length / ITEMS_PER_PAGE), p + 1))}
+                      disabled={tablePage >= Math.ceil(polls.length / ITEMS_PER_PAGE)}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
                   </div>
                 )}
               </div>
