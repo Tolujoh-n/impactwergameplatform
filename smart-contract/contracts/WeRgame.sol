@@ -66,6 +66,8 @@ contract WeRgame {
     
     uint256 public nextMarketId;
     uint256 public jackpotPool;
+    /// @dev Pool for paying Boost and Market prediction wins; funded by deployer and by boost stakes
+    uint256 public claimPredictionWinsPool;
     
     // Events
     event MarketCreated(uint256 indexed marketId, bool isPoll, string[] options);
@@ -84,6 +86,9 @@ contract WeRgame {
     event JackpotWithdrawn(address indexed user, uint256 amount);
     event JackpotPoolWithdrawn(address indexed to, uint256 amount);
     event FundsTransferred(address indexed to, uint256 amount);
+    event ClaimPredictionWinsPoolFunded(uint256 amount);
+    event ClaimPredictionWinsPoolWithdrawn(address indexed to, uint256 amount);
+    event PredictionWinsClaimed(uint256 indexed marketId, address indexed user, uint256 amount);
     
     modifier onlyDeployer() {
         require(msg.sender == deployer, "Only deployer");
@@ -98,6 +103,14 @@ contract WeRgame {
     modifier validMarket(uint256 marketId) {
         require(markets[marketId].marketId != 0, "Market does not exist");
         _;
+    }
+    
+    uint256 private _locked = 0;
+    modifier nonReentrant() {
+        require(_locked == 0, "ReentrancyGuard: reentrant call");
+        _locked = 1;
+        _;
+        _locked = 0;
     }
     
     constructor() {
@@ -267,6 +280,9 @@ contract WeRgame {
             prediction.totalStake += netStake;
         }
         
+        // Boost stakes fund the claim prediction wins pool
+        claimPredictionWinsPool += msg.value;
+        
         emit BoostStaked(marketId, msg.sender, outcome, netStake);
     }
     
@@ -288,13 +304,16 @@ contract WeRgame {
         
         prediction.totalStake += netStake;
         
+        // Additional boost stake funds the claim prediction wins pool
+        claimPredictionWinsPool += msg.value;
+        
         emit BoostStakeAdded(marketId, msg.sender, netStake);
     }
     
     /**
      * @dev Withdraw stake from boost prediction (only before resolution)
      */
-    function withdrawBoostStake(uint256 marketId, string memory outcome, uint256 amount) external validMarket(marketId) {
+    function withdrawBoostStake(uint256 marketId, string memory outcome, uint256 amount) external validMarket(marketId) nonReentrant {
         Market storage market = markets[marketId];
         require(market.status == MarketStatus.Upcoming || market.status == MarketStatus.Active, "Market not active");
         
@@ -303,6 +322,8 @@ contract WeRgame {
         require(prediction.totalStake >= amount, "Insufficient stake");
         
         prediction.totalStake -= amount;
+        require(claimPredictionWinsPool >= amount, "Insufficient claim pool");
+        claimPredictionWinsPool -= amount;
         
         // Transfer ETH back to user
         (bool success, ) = payable(msg.sender).call{value: amount}("");
@@ -314,7 +335,7 @@ contract WeRgame {
     /**
      * @dev Claim boost prediction winnings
      */
-    function claimBoost(uint256 marketId, string memory outcome) external validMarket(marketId) {
+    function claimBoost(uint256 marketId, string memory outcome) external validMarket(marketId) nonReentrant {
         Market storage market = markets[marketId];
         require(market.resolved, "Market not resolved");
         require(keccak256(bytes(market.winningOption)) == keccak256(bytes(outcome)), "Not winning outcome");
@@ -327,9 +348,11 @@ contract WeRgame {
         // Calculate claimable amount (backend will set this via setClaimableBalance)
         uint256 claimable = claimableBalances[marketId][msg.sender];
         require(claimable > 0, "No claimable balance");
+        require(claimPredictionWinsPool >= claimable, "Insufficient claim pool");
         
         prediction.claimed = true;
         claimableBalances[marketId][msg.sender] = 0;
+        claimPredictionWinsPool -= claimable;
         
         // Transfer winnings
         (bool success, ) = payable(msg.sender).call{value: claimable}("");
@@ -343,6 +366,64 @@ contract WeRgame {
      */
     function setClaimableBalance(uint256 marketId, address user, uint256 amount) external onlyDeployer {
         claimableBalances[marketId][user] = amount;
+    }
+    
+    /**
+     * @dev Claim prediction winnings (Boost or Market) for a resolved market.
+     * Caller must have participated (recorded boost stake or market position in winning outcome) and have claimable balance set by deployer.
+     * Pays from the claimPredictionWinsPool.
+     */
+    function claimPredictionWins(uint256 marketId) external validMarket(marketId) nonReentrant {
+        Market storage market = markets[marketId];
+        require(market.resolved, "Market not resolved");
+        
+        uint256 amount = claimableBalances[marketId][msg.sender];
+        require(amount > 0, "No claimable balance");
+        
+        string memory winningOption = market.winningOption;
+        
+        // Require caller participated: boost (winning outcome, not yet claimed) or market (winning outcome, shares > 0)
+        BoostPrediction storage boostPred = boostPredictions[marketId][msg.sender][winningOption];
+        MarketPosition storage pos = marketPositions[marketId][msg.sender][winningOption];
+        bool hasBoost = boostPred.user == msg.sender && boostPred.totalStake > 0 && !boostPred.claimed;
+        bool hasMarket = pos.user == msg.sender && pos.shares > 0;
+        require(hasBoost || hasMarket, "Not a participant");
+        
+        require(claimPredictionWinsPool >= amount, "Insufficient claim pool");
+        
+        // Effects
+        claimableBalances[marketId][msg.sender] = 0;
+        if (hasBoost) {
+            boostPred.claimed = true;
+        }
+        claimPredictionWinsPool -= amount;
+        
+        // Interaction (last)
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "Transfer failed");
+        
+        emit PredictionWinsClaimed(marketId, msg.sender, amount);
+    }
+    
+    /**
+     * @dev Fund the claim prediction wins pool (deployer only).
+     */
+    function fundClaimPredictionWinsPool() external payable onlyDeployer {
+        require(msg.value > 0, "Amount must be greater than 0");
+        claimPredictionWinsPool += msg.value;
+        emit ClaimPredictionWinsPoolFunded(msg.value);
+    }
+    
+    /**
+     * @dev Withdraw from claim prediction wins pool (deployer only).
+     */
+    function withdrawFromClaimPredictionWinsPool(address payable to, uint256 amount) external onlyDeployer nonReentrant {
+        require(to != address(0), "Invalid recipient");
+        require(claimPredictionWinsPool >= amount, "Insufficient pool balance");
+        claimPredictionWinsPool -= amount;
+        (bool success, ) = to.call{value: amount}("");
+        require(success, "Transfer failed");
+        emit ClaimPredictionWinsPoolWithdrawn(to, amount);
     }
     
     /**
@@ -390,13 +471,16 @@ contract WeRgame {
         position.shares += shares;
         position.totalInvested += netAmount;
         
+        // Market buys fund the claim prediction wins pool
+        claimPredictionWinsPool += msg.value;
+        
         emit MarketBought(marketId, msg.sender, outcome, netAmount, shares);
     }
     
     /**
      * @dev Sell shares in market
      */
-    function sellMarketShares(uint256 marketId, string memory outcome, uint256 shares) external validMarket(marketId) {
+    function sellMarketShares(uint256 marketId, string memory outcome, uint256 shares) external validMarket(marketId) nonReentrant {
         Market storage market = markets[marketId];
         require(market.status == MarketStatus.Upcoming || market.status == MarketStatus.Active, "Market not active");
         
@@ -421,6 +505,10 @@ contract WeRgame {
         position.shares -= shares;
         position.totalInvested -= (payout * position.totalInvested) / (position.shares + shares);
         
+        // Deduct from claim prediction wins pool when user sells (pool was credited on buy)
+        require(claimPredictionWinsPool >= payout, "Insufficient claim pool");
+        claimPredictionWinsPool -= payout;
+        
         // Transfer ETH to user
         (bool success, ) = payable(msg.sender).call{value: payout}("");
         require(success, "Transfer failed");
@@ -431,7 +519,7 @@ contract WeRgame {
     /**
      * @dev Claim market winnings after resolution
      */
-    function claimMarket(uint256 marketId, string memory outcome) external validMarket(marketId) {
+    function claimMarket(uint256 marketId, string memory outcome) external validMarket(marketId) nonReentrant {
         Market storage market = markets[marketId];
         require(market.resolved, "Market not resolved");
         require(keccak256(bytes(market.winningOption)) == keccak256(bytes(outcome)), "Not winning outcome");
@@ -443,8 +531,10 @@ contract WeRgame {
         // Calculate claimable amount (backend will set this)
         uint256 claimable = claimableBalances[marketId][msg.sender];
         require(claimable > 0, "No claimable balance");
+        require(claimPredictionWinsPool >= claimable, "Insufficient claim pool");
         
         claimableBalances[marketId][msg.sender] = 0;
+        claimPredictionWinsPool -= claimable;
         
         // Transfer winnings
         (bool success, ) = payable(msg.sender).call{value: claimable}("");
@@ -496,7 +586,7 @@ contract WeRgame {
     /**
      * @dev User withdraw from jackpot pool
      */
-    function withdrawJackpot(uint256 amount) external {
+    function withdrawJackpot(uint256 amount) external nonReentrant {
         require(amount > 0, "Amount must be greater than 0");
         require(jackpotPool >= amount, "Insufficient jackpot pool");
         require(jackpotBalances[msg.sender] >= amount, "Insufficient balance");
@@ -520,7 +610,7 @@ contract WeRgame {
     /**
      * @dev Withdraw from jackpot pool (deployer only)
      */
-    function withdrawFromJackpotPool(address payable to, uint256 amount) external onlyDeployer {
+    function withdrawFromJackpotPool(address payable to, uint256 amount) external onlyDeployer nonReentrant {
         require(jackpotPool >= amount, "Insufficient pool balance");
         jackpotPool -= amount;
         

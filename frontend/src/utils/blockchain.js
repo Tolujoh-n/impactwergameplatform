@@ -18,7 +18,7 @@ export const BASE_TESTNET_PARAMS = {
 export const WERGAME_ABI = WeRgame.abi;
 
 // Contract address (will be set after deployment)
-let CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || '0x19596fb8e21921A54a19A85E3FaD34Efcf10ad5D';
+let CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || '0xE47b25E8290C191a219A19c50439C67746B03a35';
 
 export const setContractAddress = (address) => {
   CONTRACT_ADDRESS = address;
@@ -365,6 +365,45 @@ export const sellMarketShares = async (marketId, outcome, shares) => {
 export const claimMarket = async (marketId, outcome) => {
   const contract = await getContract();
   const tx = await contract.claimMarket(marketId, outcome);
+  await tx.wait();
+  return tx.hash;
+};
+
+/**
+ * Claim prediction wins (Boost or Market) - single function for both.
+ * Caller must have participated and have claimable balance set by deployer.
+ */
+export const claimPredictionWins = async (marketId) => {
+  await ensureWalletConnected();
+  const contract = await getContract();
+  const tx = await contract.claimPredictionWins(marketId);
+  await tx.wait();
+  return tx.hash;
+};
+
+// Get claim prediction wins pool balance
+export const getClaimPredictionWinsPoolBalance = async () => {
+  const contract = getContractReadOnly();
+  const balance = await contract.claimPredictionWinsPool();
+  return weiToEth(balance);
+};
+
+// Fund claim prediction wins pool (deployer only)
+export const fundClaimPredictionWinsPool = async (amountEth) => {
+  await ensureWalletConnected();
+  const contract = await getContract();
+  const amountWei = ethToWei(amountEth);
+  const tx = await contract.fundClaimPredictionWinsPool({ value: amountWei });
+  await tx.wait();
+  return tx.hash;
+};
+
+// Withdraw from claim prediction wins pool (deployer only)
+export const withdrawFromClaimPredictionWinsPool = async (toAddress, amountEth) => {
+  await ensureWalletConnected();
+  const contract = await getContract();
+  const amountWei = ethToWei(amountEth);
+  const tx = await contract.withdrawFromClaimPredictionWinsPool(toAddress, amountWei);
   await tx.wait();
   return tx.hash;
 };

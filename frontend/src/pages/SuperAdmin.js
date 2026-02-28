@@ -13,6 +13,9 @@ import {
   setSuperAdmin as setSuperAdminOnChain,
   setContractAddress,
   getJackpotPoolBalance,
+  getClaimPredictionWinsPoolBalance,
+  fundClaimPredictionWinsPool,
+  withdrawFromClaimPredictionWinsPool,
 } from '../utils/blockchain';
 
 const SuperAdmin = () => {
@@ -36,6 +39,10 @@ const SuperAdmin = () => {
   const [jackpotFundAmount, setJackpotFundAmount] = useState('');
   const [jackpotWithdrawAmount, setJackpotWithdrawAmount] = useState('');
   const [jackpotWithdrawTo, setJackpotWithdrawTo] = useState('');
+  const [claimPredictionWinsPoolBalance, setClaimPredictionWinsPoolBalance] = useState('');
+  const [claimPoolFundAmount, setClaimPoolFundAmount] = useState('');
+  const [claimPoolWithdrawAmount, setClaimPoolWithdrawAmount] = useState('');
+  const [claimPoolWithdrawTo, setClaimPoolWithdrawTo] = useState('');
   const { showNotification } = useNotification();
   const { account, connect, isBaseSepolia } = useWallet();
   
@@ -111,7 +118,13 @@ const SuperAdmin = () => {
       } catch (jackpotError) {
         console.error('Error getting jackpot pool balance:', jackpotError);
       }
-      
+      // Get claim prediction wins pool balance
+      try {
+        const claimPoolBalance = await getClaimPredictionWinsPoolBalance();
+        setClaimPredictionWinsPoolBalance(claimPoolBalance);
+      } catch (claimPoolError) {
+        console.error('Error getting claim prediction wins pool balance:', claimPoolError);
+      }
       showNotification('Balance loaded from blockchain', 'success');
     } catch (error) {
       console.error('Error getting balance:', error);
@@ -199,6 +212,51 @@ const SuperAdmin = () => {
     } catch (error) {
       console.error('Error withdrawing from jackpot pool:', error);
       showNotification(error.message || 'Failed to withdraw from jackpot pool', 'error');
+    }
+  };
+
+  const handleFundClaimPredictionWinsPool = async () => {
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    if (!claimPoolFundAmount || parseFloat(claimPoolFundAmount) <= 0) {
+      showNotification('Please enter a valid amount', 'warning');
+      return;
+    }
+    try {
+      const txHash = await fundClaimPredictionWinsPool(parseFloat(claimPoolFundAmount));
+      showNotification(`Claim prediction wins pool funded! TX: ${txHash.slice(0, 10)}...`, 'success');
+      setClaimPoolFundAmount('');
+      await handleGetBalance();
+    } catch (error) {
+      console.error('Error funding claim prediction wins pool:', error);
+      showNotification(error.message || 'Failed to fund claim prediction wins pool', 'error');
+    }
+  };
+
+  const handleWithdrawFromClaimPredictionWinsPool = async () => {
+    if (!isBaseSepolia) {
+      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+      return;
+    }
+    if (!claimPoolWithdrawAmount || parseFloat(claimPoolWithdrawAmount) <= 0) {
+      showNotification('Please enter a valid amount', 'warning');
+      return;
+    }
+    if (!claimPoolWithdrawTo?.trim()) {
+      showNotification('Please enter a recipient address', 'warning');
+      return;
+    }
+    try {
+      const txHash = await withdrawFromClaimPredictionWinsPool(claimPoolWithdrawTo.trim(), parseFloat(claimPoolWithdrawAmount));
+      showNotification(`Withdrawn from claim prediction wins pool! TX: ${txHash.slice(0, 10)}...`, 'success');
+      setClaimPoolWithdrawAmount('');
+      setClaimPoolWithdrawTo('');
+      await handleGetBalance();
+    } catch (error) {
+      console.error('Error withdrawing from claim prediction wins pool:', error);
+      showNotification(error.message || 'Failed to withdraw from claim prediction wins pool', 'error');
     }
   };
 
@@ -629,6 +687,79 @@ const SuperAdmin = () => {
                       />
                       <button
                         onClick={handleWithdrawFromJackpotPool}
+                        disabled={!account || !isBaseSepolia}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Withdraw
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                Claim Prediction Wins Pool
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                This pool pays out Boost and Market prediction winnings. Fund it so users can claim after resolution. Boost stakes and market buys also add to this pool.
+              </p>
+              <div className="flex items-center space-x-4 mb-4">
+                <p className="text-lg text-gray-700 dark:text-gray-300">
+                  Pool Balance: {claimPredictionWinsPoolBalance !== '' ? `${claimPredictionWinsPoolBalance} ETH` : 'N/A'}
+                </p>
+                <button
+                  onClick={handleGetBalance}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    Fund Claim Prediction Wins Pool
+                  </h3>
+                  <div className="flex space-x-2">
+                    <input
+                      type="number"
+                      value={claimPoolFundAmount}
+                      onChange={(e) => setClaimPoolFundAmount(e.target.value)}
+                      placeholder="Amount (ETH)"
+                      className="flex-1 px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                    />
+                    <button
+                      onClick={handleFundClaimPredictionWinsPool}
+                      disabled={!account || !isBaseSepolia}
+                      className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Fund Pool
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    Withdraw from Claim Prediction Wins Pool
+                  </h3>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={claimPoolWithdrawTo}
+                      onChange={(e) => setClaimPoolWithdrawTo(e.target.value)}
+                      placeholder="Recipient Address"
+                      className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                    />
+                    <div className="flex space-x-2">
+                      <input
+                        type="number"
+                        value={claimPoolWithdrawAmount}
+                        onChange={(e) => setClaimPoolWithdrawAmount(e.target.value)}
+                        placeholder="Amount (ETH)"
+                        className="flex-1 px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                      />
+                      <button
+                        onClick={handleWithdrawFromClaimPredictionWinsPool}
                         disabled={!account || !isBaseSepolia}
                         className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       >

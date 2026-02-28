@@ -7,11 +7,10 @@ import { useWallet } from '../context/WalletContext';
 import {
   buyMarketShares,
   sellMarketShares,
-  claimMarket,
+  claimPredictionWins,
   stakeBoost,
   addBoostStake,
   withdrawBoostStake,
-  claimBoost,
   setContractAddress,
 } from '../utils/blockchain';
 import Modal from '../components/Modal';
@@ -875,8 +874,8 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                                 normalizedOutcome = normalizedOutcome.toUpperCase();
                               }
                               
-                              // Claim on blockchain first
-                              const txHash = await claimBoost(item.marketId, normalizedOutcome);
+                              // Claim on blockchain (single pool for Boost and Market)
+                              const txHash = await claimPredictionWins(item.marketId);
                               showNotification(`Claim sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
                               
                               // Then claim in backend
@@ -2124,8 +2123,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                                     normalizedOutcome = normalizedOutcome.toUpperCase();
                                   }
                                   
-                                  // Claim on blockchain first
-                                  const txHash = await claimMarket(itemData.marketId, normalizedOutcome);
+                                  // Claim on blockchain (single pool for Boost and Market)
+                                  const txHash = await claimPredictionWins(itemData.marketId);
                                   showNotification(`Claim sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
                                   
                                   // Then claim in backend
