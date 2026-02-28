@@ -273,90 +273,28 @@ const Admin = () => {
         
         // Then resolve in backend only after blockchain success
         const resolveResponse = await api.post(`/admin/matches/${matchId}/resolve`, { result });
-        const resolvedMatch = resolveResponse.data;
+        const { match: resolvedMatch, claimableUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
         
-        // After backend resolution, set claimable balances and jackpot balances on blockchain
-        // We need to fetch the resolved match to get updated prediction data
-        const updatedMatchResponse = await api.get(`/matches/${matchId}`);
-        const updatedMatch = updatedMatchResponse.data;
-        
-        // Fetch all predictions for this match to set claimable balances
-        let predictions = [];
-        try {
-          // Get predictions - we'll need to query by match
-          // Since there's no direct endpoint, we'll create a helper to get predictions
-          const allUserPredictions = await api.get('/predictions/user');
-          predictions = Array.isArray(allUserPredictions.data) 
-            ? allUserPredictions.data.filter(p => 
-                p.match && (p.match._id === matchId || p.match === matchId || String(p.match) === String(matchId))
-              )
-            : [];
-        } catch (err) {
-          console.warn('Could not fetch all predictions, will try alternative method', err);
-        }
-        
-        // Set claimable balances for boost and market winners
+        // Set claimable and jackpot balances on blockchain from backend response
+        const marketId = match.marketId;
         let setBalanceCount = 0;
-        const processedUsers = new Set();
-        
-        for (const prediction of predictions) {
-          if (prediction.status === 'settled' && prediction.payout > 0 && (prediction.type === 'boost' || prediction.type === 'market')) {
-            try {
-              const userId = prediction.user?._id || prediction.user;
-              if (!userId || processedUsers.has(userId)) continue;
-              processedUsers.add(userId);
-              
-              // Get user to get wallet address
-              const userResponse = await api.get(`/users/${userId}`);
-              const user = userResponse.data;
-              
-              if (user && user.walletAddress) {
-                // Normalize outcome for blockchain
-                let normalizedOutcome = prediction.outcome;
-                if (normalizedOutcome === 'TeamA' || normalizedOutcome.toLowerCase() === 'teama') {
-                  normalizedOutcome = 'TeamA';
-                } else if (normalizedOutcome === 'TeamB' || normalizedOutcome.toLowerCase() === 'teamb') {
-                  normalizedOutcome = 'TeamB';
-                } else if (normalizedOutcome === 'Draw' || normalizedOutcome.toLowerCase() === 'draw') {
-                  normalizedOutcome = 'Draw';
-                } else {
-                  normalizedOutcome = normalizedOutcome.toUpperCase();
-                }
-                
-                // Set claimable balance for boost and market winners
-                await setClaimableBalance(match.marketId, user.walletAddress, prediction.payout);
-                setBalanceCount++;
-              }
-            } catch (balanceError) {
-              console.error(`Error setting claimable balance for prediction ${prediction._id}:`, balanceError);
-              // Continue with other predictions
-            }
-          }
-        }
-        
-        // Set jackpot balances for users who won jackpots
-        // Get all users who have jackpot balances from winning predictions
-        const winningPredictions = predictions.filter(p => 
-          p.status === 'won' && (p.type === 'free' || p.type === 'boost')
-        );
-        const uniqueUserIds = [...new Set(winningPredictions.map(p => p.user?._id || p.user))];
-        let jackpotBalanceCount = 0;
-        
-        for (const userId of uniqueUserIds) {
+        for (const { walletAddress, amount } of claimableUpdates) {
           try {
-            const userResponse = await api.get(`/users/${userId}`);
-            const user = userResponse.data;
-            
-            if (user && user.walletAddress && user.jackpotBalance > 0) {
-              await setJackpotBalance(user.walletAddress, user.jackpotBalance);
-              jackpotBalanceCount++;
-            }
-          } catch (jackpotError) {
-            console.error(`Error setting jackpot balance for user ${userId}:`, jackpotError);
-            // Continue with other users
+            await setClaimableBalance(marketId, walletAddress, amount);
+            setBalanceCount++;
+          } catch (balanceError) {
+            console.error(`Error setting claimable balance for ${walletAddress}:`, balanceError);
           }
         }
-        
+        let jackpotBalanceCount = 0;
+        for (const { walletAddress, amount } of jackpotUpdates) {
+          try {
+            await setJackpotBalance(walletAddress, amount);
+            jackpotBalanceCount++;
+          } catch (jackpotError) {
+            console.error(`Error setting jackpot balance for ${walletAddress}:`, jackpotError);
+          }
+        }
         if (setBalanceCount > 0) {
           showNotification(`Set ${setBalanceCount} claimable balance(s) on blockchain`, 'success');
         }
@@ -460,75 +398,28 @@ const Admin = () => {
         
         // Then resolve in backend only after blockchain success
         const payload = optionIndex !== undefined ? { optionIndex } : { result };
-        await api.post(`/admin/polls/${pollId}/resolve`, payload);
+        const resolveResponse = await api.post(`/admin/polls/${pollId}/resolve`, payload);
+        const { poll: resolvedPoll, claimableUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
         
-        // After backend resolution, set claimable balances and jackpot balances on blockchain
-        const updatedPollResponse = await api.get(`/polls/${pollId}`);
-        const updatedPoll = updatedPollResponse.data;
-        
-        // Fetch all predictions for this poll to set claimable balances
-        let predictions = [];
-        try {
-          const allUserPredictions = await api.get('/predictions/user');
-          predictions = Array.isArray(allUserPredictions.data) 
-            ? allUserPredictions.data.filter(p => 
-                p.poll && (p.poll._id === pollId || p.poll === pollId || String(p.poll) === String(pollId))
-              )
-            : [];
-        } catch (err) {
-          console.warn('Could not fetch all predictions, will try alternative method', err);
-        }
-        
-        // Set claimable balances for boost and market winners
+        // Set claimable and jackpot balances on blockchain from backend response
+        const marketId = poll.marketId;
         let setBalanceCount = 0;
-        const processedUsers = new Set();
         
-        for (const prediction of predictions) {
-          if (prediction.status === 'settled' && prediction.payout > 0 && (prediction.type === 'boost' || prediction.type === 'market')) {
-            try {
-              const userId = prediction.user?._id || prediction.user;
-              if (!userId || processedUsers.has(userId)) continue;
-              processedUsers.add(userId);
-              
-              // Get user to get wallet address
-              const userResponse = await api.get(`/users/${userId}`);
-              const user = userResponse.data;
-              
-              if (user && user.walletAddress) {
-                // Normalize outcome for blockchain (polls use YES/NO or option text)
-                let normalizedOutcome = prediction.outcome;
-                normalizedOutcome = normalizedOutcome.toUpperCase();
-                
-                // Set claimable balance for boost and market winners
-                await setClaimableBalance(poll.marketId, user.walletAddress, prediction.payout);
-                setBalanceCount++;
-              }
-            } catch (balanceError) {
-              console.error(`Error setting claimable balance for prediction ${prediction._id}:`, balanceError);
-              // Continue with other predictions
-            }
+        for (const { walletAddress, amount } of claimableUpdates) {
+          try {
+            await setClaimableBalance(marketId, walletAddress, amount);
+            setBalanceCount++;
+          } catch (balanceError) {
+            console.error(`Error setting claimable balance for ${walletAddress}:`, balanceError);
           }
         }
-        
-        // Set jackpot balances for users who won jackpots
-        const winningPredictions = predictions.filter(p => 
-          p.status === 'won' && (p.type === 'free' || p.type === 'boost')
-        );
-        const uniqueUserIds = [...new Set(winningPredictions.map(p => p.user?._id || p.user))];
         let jackpotBalanceCount = 0;
-        
-        for (const userId of uniqueUserIds) {
+        for (const { walletAddress, amount } of jackpotUpdates) {
           try {
-            const userResponse = await api.get(`/users/${userId}`);
-            const user = userResponse.data;
-            
-            if (user && user.walletAddress && user.jackpotBalance > 0) {
-              await setJackpotBalance(user.walletAddress, user.jackpotBalance);
-              jackpotBalanceCount++;
-            }
+            await setJackpotBalance(walletAddress, amount);
+            jackpotBalanceCount++;
           } catch (jackpotError) {
-            console.error(`Error setting jackpot balance for user ${userId}:`, jackpotError);
-            // Continue with other users
+            console.error(`Error setting jackpot balance for ${walletAddress}:`, jackpotError);
           }
         }
         

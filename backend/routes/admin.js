@@ -627,7 +627,28 @@ router.post('/matches/:id/resolve', async (req, res) => {
 
     await match.save();
 
-    res.json(match);
+    // Build claimable and jackpot updates for frontend to set on blockchain
+    const predsWithUser = await Prediction.find({ match: match._id }).populate('user', 'walletAddress jackpotBalance');
+    const claimableByWallet = {};
+    for (const p of predsWithUser) {
+      if ((p.type === 'boost' || p.type === 'market') && p.status === 'settled' && p.payout > 0 && p.user?.walletAddress) {
+        const w = p.user.walletAddress;
+        claimableByWallet[w] = (claimableByWallet[w] || 0) + p.payout;
+      }
+    }
+    const claimableUpdates = Object.entries(claimableByWallet).map(([walletAddress, amount]) => ({ walletAddress, amount }));
+    const jackpotUserIds = [...new Set(
+      predsWithUser.filter(p => (p.type === 'free' || p.type === 'boost') && p.status === 'won').map(p => p.user?._id?.toString()).filter(Boolean)
+    )];
+    const jackpotUpdates = [];
+    for (const uid of jackpotUserIds) {
+      const user = await User.findById(uid).select('walletAddress jackpotBalance');
+      if (user && user.walletAddress && user.jackpotBalance > 0) {
+        jackpotUpdates.push({ walletAddress: user.walletAddress, amount: user.jackpotBalance });
+      }
+    }
+
+    res.json({ match, claimableUpdates, jackpotUpdates });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1031,7 +1052,28 @@ router.post('/polls/:id/resolve', async (req, res) => {
     
     await poll.save();
 
-    res.json(poll);
+    // Build claimable and jackpot updates for frontend to set on blockchain
+    const predsWithUser = await Prediction.find({ poll: poll._id }).populate('user', 'walletAddress jackpotBalance');
+    const claimableByWallet = {};
+    for (const p of predsWithUser) {
+      if ((p.type === 'boost' || p.type === 'market') && p.status === 'settled' && p.payout > 0 && p.user?.walletAddress) {
+        const w = p.user.walletAddress;
+        claimableByWallet[w] = (claimableByWallet[w] || 0) + p.payout;
+      }
+    }
+    const claimableUpdates = Object.entries(claimableByWallet).map(([walletAddress, amount]) => ({ walletAddress, amount }));
+    const jackpotUserIds = [...new Set(
+      predsWithUser.filter(p => (p.type === 'free' || p.type === 'boost') && p.status === 'won').map(p => p.user?._id?.toString()).filter(Boolean)
+    )];
+    const jackpotUpdates = [];
+    for (const uid of jackpotUserIds) {
+      const user = await User.findById(uid).select('walletAddress jackpotBalance');
+      if (user && user.walletAddress && user.jackpotBalance > 0) {
+        jackpotUpdates.push({ walletAddress: user.walletAddress, amount: user.jackpotBalance });
+      }
+    }
+
+    res.json({ poll, claimableUpdates, jackpotUpdates });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
