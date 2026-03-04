@@ -18,6 +18,6 @@ npm install --save @openzeppelin/contracts
 
 ##
 
-- Wergame wallet address : 0xE47b25E8290C191a219A19c50439C67746B03a35
+- Wergame wallet address : 0x962e03f90bDd5d996F7e0003cb9C9cEEA289F5b5
 
 

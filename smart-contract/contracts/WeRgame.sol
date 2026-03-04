@@ -433,7 +433,10 @@ contract WeRgame {
      */
     function withdrawFromClaimPredictionWinsPool(address payable to, uint256 amount) external onlyDeployer nonReentrant {
         require(to != address(0), "Invalid recipient");
+        require(to != address(this), "Cannot send to contract");
+        require(amount > 0, "Amount must be greater than 0");
         require(claimPredictionWinsPool >= amount, "Insufficient pool balance");
+        require(address(this).balance >= amount, "Insufficient contract balance");
         claimPredictionWinsPool -= amount;
         (bool success, ) = to.call{value: amount}("");
         require(success, "Transfer failed");
@@ -625,12 +628,16 @@ contract WeRgame {
      * @dev Withdraw from jackpot pool (deployer only)
      */
     function withdrawFromJackpotPool(address payable to, uint256 amount) external onlyDeployer nonReentrant {
+        require(to != address(0), "Invalid recipient");
+        require(to != address(this), "Cannot send to contract");
+        require(amount > 0, "Amount must be greater than 0");
         require(jackpotPool >= amount, "Insufficient pool balance");
+        require(address(this).balance >= amount, "Insufficient contract balance");
         jackpotPool -= amount;
-        
+
         (bool success, ) = to.call{value: amount}("");
         require(success, "Transfer failed");
-        
+
         emit JackpotPoolWithdrawn(to, amount);
     }
     
@@ -645,11 +652,14 @@ contract WeRgame {
      * @dev Transfer funds from contract (deployer only)
      */
     function transferFunds(address payable to, uint256 amount) external onlyDeployer {
+        require(to != address(0), "Invalid recipient");
+        require(to != address(this), "Cannot send to contract");
+        require(amount > 0, "Amount must be greater than 0");
         require(address(this).balance >= amount, "Insufficient contract balance");
-        
+
         (bool success, ) = to.call{value: amount}("");
         require(success, "Transfer failed");
-        
+
         emit FundsTransferred(to, amount);
     }
     

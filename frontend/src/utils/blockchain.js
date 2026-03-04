@@ -18,7 +18,7 @@ export const BASE_TESTNET_PARAMS = {
 export const WERGAME_ABI = WeRgame.abi;
 
 // Contract address (will be set after deployment)
-let CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || '0xE47b25E8290C191a219A19c50439C67746B03a35';
+let CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || '0x962e03f90bDd5d996F7e0003cb9C9cEEA289F5b5';
 
 export const setContractAddress = (address) => {
   CONTRACT_ADDRESS = address;
@@ -402,9 +402,19 @@ export const fundClaimPredictionWinsPool = async (amountEth) => {
 // Withdraw from claim prediction wins pool (deployer only)
 export const withdrawFromClaimPredictionWinsPool = async (toAddress, amountEth) => {
   await ensureWalletConnected();
+  if (!toAddress || typeof toAddress !== 'string' || !toAddress.trim()) {
+    throw new Error('Invalid recipient address');
+  }
+  const addr = toAddress.trim();
+  if (!ethers.isAddress(addr)) {
+    throw new Error('Recipient is not a valid Ethereum address');
+  }
   const contract = await getContract();
-  const amountWei = ethToWei(amountEth);
-  const tx = await contract.withdrawFromClaimPredictionWinsPool(toAddress, amountWei);
+  const amountWei = ethToWei(String(amountEth));
+  if (amountWei === 0n) {
+    throw new Error('Amount must be greater than 0');
+  }
+  const tx = await contract.withdrawFromClaimPredictionWinsPool(addr, amountWei);
   await tx.wait();
   return tx.hash;
 };
@@ -458,9 +468,20 @@ export const getJackpotBalance = async (userAddress) => {
 
 // Withdraw from jackpot pool (deployer only)
 export const withdrawFromJackpotPool = async (toAddress, amountEth) => {
+  await ensureWalletConnected();
+  if (!toAddress || typeof toAddress !== 'string' || !toAddress.trim()) {
+    throw new Error('Invalid recipient address');
+  }
+  const addr = toAddress.trim();
+  if (!ethers.isAddress(addr)) {
+    throw new Error('Recipient is not a valid Ethereum address');
+  }
   const contract = await getContract();
-  const amountWei = ethToWei(amountEth);
-  const tx = await contract.withdrawFromJackpotPool(toAddress, amountWei);
+  const amountWei = ethToWei(String(amountEth));
+  if (amountWei === 0n) {
+    throw new Error('Amount must be greater than 0');
+  }
+  const tx = await contract.withdrawFromJackpotPool(addr, amountWei);
   await tx.wait();
   return tx.hash;
 };
