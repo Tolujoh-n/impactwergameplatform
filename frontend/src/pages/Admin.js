@@ -9,6 +9,8 @@ import {
   updateMarketStatus,
   setContractAddress,
   setClaimableBalance,
+  setClaimableBoost,
+  setClaimableMarket,
   setJackpotBalance,
 } from '../utils/blockchain';
 import Modal from '../components/Modal';
@@ -280,21 +282,30 @@ const Admin = () => {
         
         // Then resolve in backend only after blockchain success
         const resolveResponse = await api.post(`/admin/matches/${matchId}/resolve`, { result });
-        const { match: resolvedMatch, claimableUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
+        const { match: resolvedMatch, claimableBoostUpdates = [], claimableMarketUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
         
-        // Set claimable and jackpot balances on blockchain so Boost/Market winners can claim immediately
+        // Set claimable boost, claimable market, and jackpot on blockchain so users can claim each separately
         const marketId = match.marketId;
-        const totalToSet = claimableUpdates.length + jackpotUpdates.length;
+        const totalToSet = claimableBoostUpdates.length + claimableMarketUpdates.length + jackpotUpdates.length;
         if (totalToSet > 0) {
           showNotification(`Setting ${totalToSet} balance(s) on chain so participants can claim…`, 'info');
         }
-        let setBalanceCount = 0;
-        for (const { walletAddress, amount } of claimableUpdates) {
+        let setBoostCount = 0;
+        for (const { walletAddress, amount } of claimableBoostUpdates) {
           try {
-            await setClaimableBalance(marketId, walletAddress, amount);
-            setBalanceCount++;
-          } catch (balanceError) {
-            console.error(`Error setting claimable balance for ${walletAddress}:`, balanceError);
+            await setClaimableBoost(marketId, walletAddress, amount);
+            setBoostCount++;
+          } catch (e) {
+            console.error(`Error setting claimable boost for ${walletAddress}:`, e);
+          }
+        }
+        let setMarketCount = 0;
+        for (const { walletAddress, amount } of claimableMarketUpdates) {
+          try {
+            await setClaimableMarket(marketId, walletAddress, amount);
+            setMarketCount++;
+          } catch (e) {
+            console.error(`Error setting claimable market for ${walletAddress}:`, e);
           }
         }
         let jackpotBalanceCount = 0;
@@ -306,19 +317,11 @@ const Admin = () => {
             console.error(`Error setting jackpot balance for ${walletAddress}:`, jackpotError);
           }
         }
-        if (setBalanceCount > 0) {
-          showNotification(`Set ${setBalanceCount} claimable balance(s) on blockchain`, 'success');
+        if (setBoostCount > 0 || setMarketCount > 0) {
+          showNotification(`Set ${setBoostCount} boost + ${setMarketCount} market claimable on blockchain`, 'success');
         }
         if (jackpotBalanceCount > 0) {
           showNotification(`Set ${jackpotBalanceCount} jackpot balance(s) on blockchain`, 'success');
-        }
-        // Sync claimable from backend so chain directly matches (runs after resolve)
-        try {
-          showNotification('Syncing claimable on chain…', 'info');
-          await handleSyncClaimableMatch(matchId);
-        } catch (syncErr) {
-          console.error('Sync claimable after resolve:', syncErr);
-          showNotification('Resolve succeeded but syncing claimable failed. You can use "Sync claimable" later.', 'warning');
         }
       } catch (blockchainError) {
         console.error('Blockchain transaction failed:', blockchainError);
@@ -339,8 +342,8 @@ const Admin = () => {
       // Create market on blockchain first
       let options = [];
       if (pollData.optionType === 'options' && pollData.options) {
-        // Option-based poll
-        options = pollData.options.map(opt => opt.text);
+        // Option-based poll - trim so contract and frontend match exactly
+        options = pollData.options.map(opt => String(opt.text || '').trim()).filter(Boolean);
       } else {
         // Normal Yes/No poll
         options = ['YES', 'NO'];
@@ -418,21 +421,30 @@ const Admin = () => {
         // Then resolve in backend only after blockchain success
         const payload = optionIndex !== undefined ? { optionIndex } : { result };
         const resolveResponse = await api.post(`/admin/polls/${pollId}/resolve`, payload);
-        const { poll: resolvedPoll, claimableUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
+        const { poll: resolvedPoll, claimableBoostUpdates = [], claimableMarketUpdates = [], jackpotUpdates = [] } = resolveResponse.data || {};
         
-        // Set claimable and jackpot balances on blockchain so Boost/Market winners can claim immediately
+        // Set claimable boost, claimable market, and jackpot on blockchain so users can claim each separately
         const marketId = poll.marketId;
-        const totalToSet = claimableUpdates.length + jackpotUpdates.length;
+        const totalToSet = claimableBoostUpdates.length + claimableMarketUpdates.length + jackpotUpdates.length;
         if (totalToSet > 0) {
           showNotification(`Setting ${totalToSet} balance(s) on chain so participants can claim…`, 'info');
         }
-        let setBalanceCount = 0;
-        for (const { walletAddress, amount } of claimableUpdates) {
+        let setBoostCount = 0;
+        for (const { walletAddress, amount } of claimableBoostUpdates) {
           try {
-            await setClaimableBalance(marketId, walletAddress, amount);
-            setBalanceCount++;
-          } catch (balanceError) {
-            console.error(`Error setting claimable balance for ${walletAddress}:`, balanceError);
+            await setClaimableBoost(marketId, walletAddress, amount);
+            setBoostCount++;
+          } catch (e) {
+            console.error(`Error setting claimable boost for ${walletAddress}:`, e);
+          }
+        }
+        let setMarketCount = 0;
+        for (const { walletAddress, amount } of claimableMarketUpdates) {
+          try {
+            await setClaimableMarket(marketId, walletAddress, amount);
+            setMarketCount++;
+          } catch (e) {
+            console.error(`Error setting claimable market for ${walletAddress}:`, e);
           }
         }
         let jackpotBalanceCount = 0;
@@ -445,19 +457,11 @@ const Admin = () => {
           }
         }
         
-        if (setBalanceCount > 0) {
-          showNotification(`Set ${setBalanceCount} claimable balance(s) on blockchain`, 'success');
+        if (setBoostCount > 0 || setMarketCount > 0) {
+          showNotification(`Set ${setBoostCount} boost + ${setMarketCount} market claimable on blockchain`, 'success');
         }
         if (jackpotBalanceCount > 0) {
           showNotification(`Set ${jackpotBalanceCount} jackpot balance(s) on blockchain`, 'success');
-        }
-        // Sync claimable from backend so chain directly matches (runs after resolve)
-        try {
-          showNotification('Syncing claimable on chain…', 'info');
-          await handleSyncClaimablePoll(pollId);
-        } catch (syncErr) {
-          console.error('Sync claimable after resolve:', syncErr);
-          showNotification('Resolve succeeded but syncing claimable failed. You can use "Sync claimable" later.', 'warning');
         }
       } catch (blockchainError) {
         console.error('Blockchain transaction failed:', blockchainError);
@@ -475,14 +479,18 @@ const Admin = () => {
   const handleSyncClaimableMatch = async (matchId) => {
     try {
       const { data } = await api.get(`/admin/claimable-updates/matches/${matchId}`);
-      const { marketId, claimableUpdates = [] } = data || {};
-      if (!marketId || !claimableUpdates.length) {
+      const { marketId, claimableBoostUpdates = [], claimableMarketUpdates = [] } = data || {};
+      if (!marketId || (claimableBoostUpdates.length === 0 && claimableMarketUpdates.length === 0)) {
         showNotification('No claimable updates for this match', 'info');
         return;
       }
       let count = 0;
-      for (const { walletAddress, amount } of claimableUpdates) {
-        await setClaimableBalance(marketId, walletAddress, amount);
+      for (const { walletAddress, amount } of claimableBoostUpdates) {
+        await setClaimableBoost(marketId, walletAddress, amount);
+        count++;
+      }
+      for (const { walletAddress, amount } of claimableMarketUpdates) {
+        await setClaimableMarket(marketId, walletAddress, amount);
         count++;
       }
       showNotification(`Synced ${count} claimable balance(s) on chain`, 'success');
@@ -496,14 +504,18 @@ const Admin = () => {
   const handleSyncClaimablePoll = async (pollId) => {
     try {
       const { data } = await api.get(`/admin/claimable-updates/polls/${pollId}`);
-      const { marketId, claimableUpdates = [] } = data || {};
-      if (!marketId || !claimableUpdates.length) {
+      const { marketId, claimableBoostUpdates = [], claimableMarketUpdates = [] } = data || {};
+      if (!marketId || (claimableBoostUpdates.length === 0 && claimableMarketUpdates.length === 0)) {
         showNotification('No claimable updates for this poll', 'info');
         return;
       }
       let count = 0;
-      for (const { walletAddress, amount } of claimableUpdates) {
-        await setClaimableBalance(marketId, walletAddress, amount);
+      for (const { walletAddress, amount } of claimableBoostUpdates) {
+        await setClaimableBoost(marketId, walletAddress, amount);
+        count++;
+      }
+      for (const { walletAddress, amount } of claimableMarketUpdates) {
+        await setClaimableMarket(marketId, walletAddress, amount);
         count++;
       }
       showNotification(`Synced ${count} claimable balance(s) on chain`, 'success');

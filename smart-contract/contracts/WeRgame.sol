@@ -61,7 +61,9 @@ contract WeRgame {
     mapping(uint256 => Market) public markets;
     mapping(uint256 => mapping(address => mapping(string => BoostPrediction))) public boostPredictions; // marketId => user => outcome => prediction
     mapping(uint256 => mapping(address => mapping(string => MarketPosition))) public marketPositions; // marketId => user => outcome => position
-    mapping(uint256 => mapping(address => uint256)) public claimableBalances; // marketId => user => claimable amount
+    mapping(uint256 => mapping(address => uint256)) public claimableBalances; // marketId => user => claimable amount (legacy/total)
+    mapping(uint256 => mapping(address => uint256)) public claimableBoost;    // marketId => user => boost claimable
+    mapping(uint256 => mapping(address => uint256)) public claimableMarket;  // marketId => user => market claimable
     mapping(address => uint256) public jackpotBalances; // user => jackpot balance
     
     uint256 public nextMarketId;
@@ -362,46 +364,58 @@ contract WeRgame {
     }
     
     /**
-     * @dev Set claimable balance for a user (called by backend after resolution)
+     * @dev Set claimable balance for a user (legacy; prefer setClaimableBoost/setClaimableMarket)
      */
     function setClaimableBalance(uint256 marketId, address user, uint256 amount) external onlyDeployer {
         claimableBalances[marketId][user] = amount;
     }
     
     /**
-     * @dev Claim prediction winnings (Boost or Market) for a resolved market.
-     * Caller must have participated (recorded boost stake or market position in winning outcome) and have claimable balance set by deployer.
-     * Pays from the claimPredictionWinsPool.
+     * @dev Set claimable boost amount for a user (called after resolution).
      */
-    function claimPredictionWins(uint256 marketId) external validMarket(marketId) nonReentrant {
+    function setClaimableBoost(uint256 marketId, address user, uint256 amount) external onlyDeployer {
+        claimableBoost[marketId][user] = amount;
+    }
+    
+    /**
+     * @dev Set claimable market amount for a user (called after resolution).
+     */
+    function setClaimableMarket(uint256 marketId, address user, uint256 amount) external onlyDeployer {
+        claimableMarket[marketId][user] = amount;
+    }
+    
+    /**
+     * @dev Claim prediction winnings (Boost or Market) for a resolved market.
+     * @param marketId Market id
+     * @param isBoost true to claim boost winnings, false to claim market winnings. Pays from claimPredictionWinsPool.
+     */
+    function claimPredictionWins(uint256 marketId, bool isBoost) external validMarket(marketId) nonReentrant {
         Market storage market = markets[marketId];
         require(market.resolved, "Market not resolved");
         
-        uint256 amount = claimableBalances[marketId][msg.sender];
-        require(amount > 0, "No claimable balance");
-        
         string memory winningOption = market.winningOption;
+        uint256 amount;
         
-        // Require caller participated: boost (winning outcome, not yet claimed) or market (winning outcome, shares > 0)
-        BoostPrediction storage boostPred = boostPredictions[marketId][msg.sender][winningOption];
-        MarketPosition storage pos = marketPositions[marketId][msg.sender][winningOption];
-        bool hasBoost = boostPred.user == msg.sender && boostPred.totalStake > 0 && !boostPred.claimed;
-        bool hasMarket = pos.user == msg.sender && pos.shares > 0;
-        require(hasBoost || hasMarket, "Not a participant");
-        
-        require(claimPredictionWinsPool >= amount, "Insufficient claim pool");
-        
-        // Effects
-        claimableBalances[marketId][msg.sender] = 0;
-        if (hasBoost) {
+        if (isBoost) {
+            amount = claimableBoost[marketId][msg.sender];
+            require(amount > 0, "No claimable balance");
+            BoostPrediction storage boostPred = boostPredictions[marketId][msg.sender][winningOption];
+            require(boostPred.user == msg.sender && boostPred.totalStake > 0 && !boostPred.claimed, "Not a participant");
+            require(claimPredictionWinsPool >= amount, "Insufficient claim pool");
+            claimableBoost[marketId][msg.sender] = 0;
             boostPred.claimed = true;
+        } else {
+            amount = claimableMarket[marketId][msg.sender];
+            require(amount > 0, "No claimable balance");
+            MarketPosition storage pos = marketPositions[marketId][msg.sender][winningOption];
+            require(pos.user == msg.sender && pos.shares > 0, "Not a participant");
+            require(claimPredictionWinsPool >= amount, "Insufficient claim pool");
+            claimableMarket[marketId][msg.sender] = 0;
         }
-        claimPredictionWinsPool -= amount;
         
-        // Interaction (last)
+        claimPredictionWinsPool -= amount;
         (bool success, ) = payable(msg.sender).call{value: amount}("");
         require(success, "Transfer failed");
-        
         emit PredictionWinsClaimed(marketId, msg.sender, amount);
     }
     

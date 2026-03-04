@@ -370,13 +370,14 @@ export const claimMarket = async (marketId, outcome) => {
 };
 
 /**
- * Claim prediction wins (Boost or Market) - single function for both.
- * Caller must have participated and have claimable balance set by deployer.
+ * Claim prediction wins (Boost or Market) from the pool.
+ * @param marketId Market id
+ * @param isBoost true to claim boost winnings, false to claim market winnings
  */
-export const claimPredictionWins = async (marketId) => {
+export const claimPredictionWins = async (marketId, isBoost) => {
   await ensureWalletConnected();
   const contract = await getContract();
-  const tx = await contract.claimPredictionWins(marketId);
+  const tx = await contract.claimPredictionWins(marketId, isBoost);
   await tx.wait();
   return tx.hash;
 };
@@ -499,12 +500,32 @@ export const getClaimableBalance = async (marketId, userAddress) => {
   return weiToEth(balance);
 };
 
-// Set claimable balance for a user (admin only)
+// Set claimable balance for a user (admin only, legacy)
 export const setClaimableBalance = async (marketId, userAddress, amountEth) => {
   await ensureWalletConnected();
   const contract = await getContract();
   const amountWei = ethToWei(amountEth);
   const tx = await contract.setClaimableBalance(marketId, userAddress, amountWei);
+  await tx.wait();
+  return tx.hash;
+};
+
+// Set claimable boost for a user (admin only)
+export const setClaimableBoost = async (marketId, userAddress, amountEth) => {
+  await ensureWalletConnected();
+  const contract = await getContract();
+  const amountWei = ethToWei(amountEth);
+  const tx = await contract.setClaimableBoost(marketId, userAddress, amountWei);
+  await tx.wait();
+  return tx.hash;
+};
+
+// Set claimable market for a user (admin only)
+export const setClaimableMarket = async (marketId, userAddress, amountEth) => {
+  await ensureWalletConnected();
+  const contract = await getContract();
+  const amountWei = ethToWei(amountEth);
+  const tx = await contract.setClaimableMarket(marketId, userAddress, amountWei);
   await tx.wait();
   return tx.hash;
 };

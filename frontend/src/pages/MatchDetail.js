@@ -179,18 +179,23 @@ const MatchDetail = () => {
             return;
           }
           
-          // Normalize outcome
-          let normalizedOutcome = outcome;
+          // Normalize outcome to match contract options exactly (match: TeamA/Draw/TeamB; poll YES/NO or custom option text)
+          let normalizedOutcome = String(outcome || '').trim();
           if (!isPoll) {
-            if (outcome === 'TeamA' || outcome.toLowerCase() === 'teama') {
+            if (normalizedOutcome.toLowerCase() === 'teama') {
               normalizedOutcome = 'TeamA';
-            } else if (outcome === 'TeamB' || outcome.toLowerCase() === 'teamb') {
+            } else if (normalizedOutcome.toLowerCase() === 'teamb') {
               normalizedOutcome = 'TeamB';
-            } else if (outcome === 'Draw' || outcome.toLowerCase() === 'draw') {
+            } else if (normalizedOutcome.toLowerCase() === 'draw') {
               normalizedOutcome = 'Draw';
             }
           } else {
-            normalizedOutcome = outcome.toUpperCase();
+            if (currentItem?.optionType === 'options' && Array.isArray(currentItem?.options) && currentItem.options.length > 0) {
+              const matchOpt = currentItem.options.find(o => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase());
+              normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
+            } else {
+              normalizedOutcome = normalizedOutcome.toUpperCase();
+            }
           }
           
           try {
@@ -272,17 +277,22 @@ const MatchDetail = () => {
         return;
       }
       
-      // Normalize outcome
+      // Normalize outcome to match contract options exactly
       if (!isPoll) {
-        if (normalizedOutcome === 'TeamA' || normalizedOutcome.toLowerCase() === 'teama') {
+        if (normalizedOutcome.toLowerCase() === 'teama') {
           normalizedOutcome = 'TeamA';
-        } else if (normalizedOutcome === 'TeamB' || normalizedOutcome.toLowerCase() === 'teamb') {
+        } else if (normalizedOutcome.toLowerCase() === 'teamb') {
           normalizedOutcome = 'TeamB';
-        } else if (normalizedOutcome === 'Draw' || normalizedOutcome.toLowerCase() === 'draw') {
+        } else if (normalizedOutcome.toLowerCase() === 'draw') {
           normalizedOutcome = 'Draw';
         }
       } else {
-        normalizedOutcome = normalizedOutcome.toUpperCase();
+        if (item?.optionType === 'options' && Array.isArray(item?.options) && item.options.length > 0) {
+          const matchOpt = item.options.find(o => o && String(o.text).trim().toLowerCase() === String(normalizedOutcome).trim().toLowerCase());
+          normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
+        } else {
+          normalizedOutcome = normalizedOutcome.toUpperCase();
+        }
       }
       
       try {
@@ -876,8 +886,8 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                                 normalizedOutcome = normalizedOutcome.toUpperCase();
                               }
                               
-                              // Claim on blockchain (single pool for Boost and Market)
-                              const txHash = await claimPredictionWins(item.marketId);
+                              // Claim boost winnings from pool
+                              const txHash = await claimPredictionWins(item.marketId, true);
                               showNotification(`Claim sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
                               
                               // Then claim in backend
@@ -1465,17 +1475,22 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
         }
         
         // Normalize outcome
-        let normalizedOutcome = selectedOption;
+        let normalizedOutcome = String(selectedOption || '').trim();
         if (!isPoll) {
-          if (normalizedOutcome === 'teamA' || normalizedOutcome === 'TeamA') {
+          if (normalizedOutcome.toLowerCase() === 'teama') {
             normalizedOutcome = 'TeamA';
-          } else if (normalizedOutcome === 'teamB' || normalizedOutcome === 'TeamB') {
+          } else if (normalizedOutcome.toLowerCase() === 'teamb') {
             normalizedOutcome = 'TeamB';
-          } else if (normalizedOutcome === 'draw' || normalizedOutcome === 'Draw') {
+          } else if (normalizedOutcome.toLowerCase() === 'draw') {
             normalizedOutcome = 'Draw';
           }
         } else {
-          normalizedOutcome = normalizedOutcome.toUpperCase();
+          if (itemData?.optionType === 'options' && Array.isArray(itemData?.options) && itemData.options.length > 0) {
+            const matchOpt = itemData.options.find(o => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase());
+            normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
+          } else {
+            normalizedOutcome = normalizedOutcome.toUpperCase();
+          }
         }
         
         try {
@@ -2150,8 +2165,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                                     normalizedOutcome = normalizedOutcome.toUpperCase();
                                   }
                                   
-                                  // Claim on blockchain (single pool for Boost and Market)
-                                  const txHash = await claimPredictionWins(itemData.marketId);
+                                  // Claim from pool: boost or market depending on pred.type
+                                  const isBoost = pred.type === 'boost';
+                                  const txHash = await claimPredictionWins(itemData.marketId, isBoost);
                                   showNotification(`Claim sent to blockchain! TX: ${txHash.slice(0, 10)}...`, 'success');
                                   
                                   // Then claim in backend
