@@ -936,7 +936,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                   )}
                 </>
               )}
-              {canModify && !isResolved && (
+              {/* {canModify && !isResolved && (
                 <div className="flex flex-wrap gap-2 mt-4">
                   <button
                     onClick={() => {
@@ -987,7 +987,7 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
                     Withdraw Stake
                   </button>
                 </div>
-              )}
+              )} */}
               {locked && !isResolved && (
                 <p className="mt-4 px-4 py-2 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
                   Predictions are locked for this match/poll
