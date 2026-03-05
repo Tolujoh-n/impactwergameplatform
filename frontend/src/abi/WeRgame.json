@@ -996,6 +996,26 @@
           "internalType": "uint256",
           "name": "marketId",
           "type": "uint256"
+        }
+      ],
+      "name": "getMarketOptions",
+      "outputs": [
+        {
+          "internalType": "string[]",
+          "name": "",
+          "type": "string[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "marketId",
+          "type": "uint256"
         },
         {
           "internalType": "string",

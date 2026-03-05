@@ -24,6 +24,26 @@ async function getFees() {
   };
 }
 
+/**
+ * Normalize match outcome to contract canonical form: TeamA, TeamB, or Draw.
+ * Accepts team names (e.g. "Poland"), "teamA"/"TeamA"/"TEAMA", etc.
+ * @param {string} outcome - Raw outcome from client
+ * @param {string} teamA - Match team A name
+ * @param {string} teamB - Match team B name
+ * @returns {string|null} 'TeamA' | 'TeamB' | 'Draw' or null if invalid
+ */
+function normalizeMatchOutcome(outcome, teamA, teamB) {
+  if (!outcome || typeof outcome !== 'string') return null;
+  const raw = String(outcome).trim();
+  const lower = raw.toLowerCase();
+  const teamALower = (teamA || '').trim().toLowerCase();
+  const teamBLower = (teamB || '').trim().toLowerCase();
+  if (lower === 'teama' || (teamALower && lower === teamALower)) return 'TeamA';
+  if (lower === 'teamb' || (teamBLower && lower === teamBLower)) return 'TeamB';
+  if (lower === 'draw') return 'Draw';
+  return null;
+}
+
 // Get all predictions for authenticated user
 router.get('/user', auth, async (req, res) => {
   try {
@@ -200,6 +220,16 @@ router.post('/boost', auth, async (req, res) => {
       return res.status(400).json({ message: 'Item is locked or completed' });
     }
 
+    // Normalize outcome for matches to contract canonical form (TeamA, TeamB, Draw)
+    let outcomeToStore = outcome;
+    if (matchId && item.teamA != null && item.teamB != null) {
+      const normalized = normalizeMatchOutcome(outcome, item.teamA, item.teamB);
+      if (!normalized) {
+        return res.status(400).json({ message: 'Invalid outcome for match. Use Team A, Team B, or Draw.' });
+      }
+      outcomeToStore = normalized;
+    }
+
     // Check if user already has a boost prediction
     const query = {
       user: req.user._id,
@@ -218,8 +248,8 @@ router.post('/boost', auth, async (req, res) => {
     // If prediction exists and item is still upcoming, allow update
     if (existingBoostPrediction) {
       if (item.status === 'upcoming' || item.status === 'active') {
-        // Update existing prediction
-        existingBoostPrediction.outcome = outcome;
+        // Update existing prediction with normalized outcome
+        existingBoostPrediction.outcome = outcomeToStore;
         existingBoostPrediction.updatedAt = new Date();
         await existingBoostPrediction.save();
         return res.json(existingBoostPrediction);
@@ -241,7 +271,7 @@ router.post('/boost', auth, async (req, res) => {
       match: matchId,
       poll: pollId,
       type: 'boost',
-      outcome,
+      outcome: outcomeToStore,
       amount: netStakeAmount, // Store net amount after fees
       totalStake: netStakeAmount, // Initialize total stake (net)
     });
@@ -362,9 +392,19 @@ router.put('/:predictionId', auth, async (req, res) => {
       return res.status(400).json({ message: 'Cannot update prediction. Item is not upcoming' });
     }
     
+    // Normalize outcome for matches to contract canonical form (TeamA, TeamB, Draw)
+    let outcomeToStore = outcome;
+    if (prediction.match && item.teamA != null && item.teamB != null) {
+      const normalized = normalizeMatchOutcome(outcome, item.teamA, item.teamB);
+      if (!normalized) {
+        return res.status(400).json({ message: 'Invalid outcome for match. Use Team A, Team B, or Draw.' });
+      }
+      outcomeToStore = normalized;
+    }
+    
     // For boost predictions, preserve the amount (totalStake) when updating outcome
     const oldOutcome = prediction.outcome;
-    prediction.outcome = outcome;
+    prediction.outcome = outcomeToStore;
     prediction.updatedAt = new Date();
     
     // For boost predictions, the amount is automatically preserved
@@ -483,7 +523,7 @@ router.post('/market/buy', auth, async (req, res) => {
     if (req.body.walletAddress && String(req.body.walletAddress).trim()) {
       await User.findByIdAndUpdate(req.user._id, { walletAddress: String(req.body.walletAddress).trim() });
     }
-    const { matchId, pollId, outcome, amount } = req.body;
+    let { matchId, pollId, outcome, amount } = req.body;
     
     if (!matchId && !pollId) {
       return res.status(400).json({ message: 'Either matchId or pollId is required' });
@@ -499,9 +539,12 @@ router.post('/market/buy', auth, async (req, res) => {
       if (!item) {
         return res.status(404).json({ message: 'Match not found' });
       }
-      if (!['teamA', 'teamB', 'draw'].includes(outcome)) {
-        return res.status(400).json({ message: 'Invalid outcome for match' });
+      // Accept team names or TeamA/TeamB/Draw (any case) and normalize to contract form
+      const normalizedMatchOutcome = normalizeMatchOutcome(outcome, item.teamA, item.teamB);
+      if (!normalizedMatchOutcome) {
+        return res.status(400).json({ message: 'Invalid outcome for match. Use Team A, Team B, or Draw.' });
       }
+      outcome = normalizedMatchOutcome; // use canonical form for rest of handler
     } else {
       item = await Poll.findById(pollId);
       if (!item) {
@@ -787,8 +830,12 @@ router.post('/market/sell', auth, async (req, res) => {
     // Normalize outcome BEFORE searching for prediction (must match how it was stored during buy)
     let normalizedOutcome = outcome;
     if (matchId) {
-      // For matches: normalize to TEAMA, TEAMB, DRAW (same as buy route)
-      normalizedOutcome = outcome.toUpperCase();
+      // For matches: use same canonical form as buy (TeamA, TeamB, Draw)
+      const canonical = normalizeMatchOutcome(outcome, item.teamA, item.teamB);
+      if (!canonical) {
+        return res.status(400).json({ message: 'Invalid outcome for match. Use Team A, Team B, or Draw.' });
+      }
+      normalizedOutcome = canonical;
     } else {
       // For polls
       if (item.optionType === 'options') {

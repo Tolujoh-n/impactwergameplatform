@@ -246,6 +246,13 @@ contract WeRgame {
     }
     
     /**
+     * @dev Get options for a market (so frontend can validate outcome before staking)
+     */
+    function getMarketOptions(uint256 marketId) external view validMarket(marketId) returns (string[] memory) {
+        return markets[marketId].options;
+    }
+    
+    /**
      * @dev Stake ETH for boost prediction
      */
     function stakeBoost(uint256 marketId, string memory outcome) external payable validMarket(marketId) {

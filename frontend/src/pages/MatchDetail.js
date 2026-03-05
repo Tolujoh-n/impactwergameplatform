@@ -11,6 +11,7 @@ import {
   stakeBoost,
   addBoostStake,
   withdrawBoostStake,
+  getMarketOptions,
   setContractAddress,
 } from '../utils/blockchain';
 import Modal from '../components/Modal';
@@ -192,18 +193,47 @@ const MatchDetail = () => {
             } else if (lower === 'draw') {
               normalizedOutcome = 'Draw';
             }
+            const allowed = currentItem.contractOutcomes || ['TeamA', 'Draw', 'TeamB'];
+            if (!allowed.includes(normalizedOutcome)) {
+              showNotification('Could not determine outcome for this match. Please select Team A, Draw, or Team B.', 'error');
+              return;
+            }
           } else {
             if (currentItem?.optionType === 'options' && Array.isArray(currentItem?.options) && currentItem.options.length > 0) {
               const matchOpt = currentItem.options.find(
                 (o) => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase()
               );
-              normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
+              if (!matchOpt) {
+                showNotification('Invalid option for this poll. Please refresh and try again.', 'error');
+                return;
+              }
+              normalizedOutcome = String(matchOpt.text).trim();
             } else {
               normalizedOutcome = normalizedOutcome.toUpperCase();
             }
           }
           
           try {
+            // Validate outcome against contract options so we get a clear error instead of "missing revert data"
+            let contractOptions = [];
+            try {
+              contractOptions = await getMarketOptions(currentItem.marketId);
+            } catch (e) {
+              console.warn('Could not fetch market options from chain:', e);
+            }
+            if (contractOptions.length > 0) {
+              const outcomeTrimmed = String(normalizedOutcome || '').trim();
+              const isAllowed = contractOptions.some(
+                (opt) => String(opt || '').trim() === outcomeTrimmed
+              );
+              if (!isAllowed) {
+                showNotification(
+                  `Your selection is not a valid option for this market on the blockchain. Valid options: ${contractOptions.join(', ')}. Please refresh or contact admin.`,
+                  'error'
+                );
+                return;
+              }
+            }
             // Stake on blockchain first - wait for transaction to complete
             showNotification('Sending transaction to blockchain...', 'info');
             const txHash = await stakeBoost(currentItem.marketId, normalizedOutcome, parseFloat(amount));
@@ -220,7 +250,8 @@ const MatchDetail = () => {
             showNotification('Boost prediction submitted successfully!', 'success');
           } catch (blockchainError) {
             console.error('Blockchain transaction failed:', blockchainError);
-            showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+            const msg = blockchainError?.message || blockchainError?.reason || 'Blockchain transaction failed. Please try again.';
+            showNotification(msg, 'error');
             throw blockchainError; // Re-throw to prevent backend call
           }
         }
@@ -1597,18 +1628,36 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           sharesToSell = parsedAmount;
         }
         
-        // Normalize outcome for blockchain
-        let normalizedOutcome = outcomeToSend;
+        // Normalize outcome for blockchain (match: TeamA/TeamB/Draw; poll: YES/NO or exact option text)
+        let normalizedOutcome = String(outcomeToSend || selectedOption || '').trim();
         if (!isPoll) {
-          if (normalizedOutcome === 'TEAMA' || normalizedOutcome === 'TeamA' || normalizedOutcome === 'teamA') {
+          const lower = normalizedOutcome.toLowerCase();
+          const teamALower = (itemData.teamA || '').trim().toLowerCase();
+          const teamBLower = (itemData.teamB || '').trim().toLowerCase();
+          if (lower === 'teama' || (teamALower && lower === teamALower)) {
             normalizedOutcome = 'TeamA';
-          } else if (normalizedOutcome === 'TEAMB' || normalizedOutcome === 'TeamB' || normalizedOutcome === 'teamB') {
+          } else if (lower === 'teamb' || (teamBLower && lower === teamBLower)) {
             normalizedOutcome = 'TeamB';
-          } else if (normalizedOutcome === 'DRAW' || normalizedOutcome === 'Draw' || normalizedOutcome === 'draw') {
+          } else if (lower === 'draw') {
             normalizedOutcome = 'Draw';
           }
+          if (normalizedOutcome !== 'TeamA' && normalizedOutcome !== 'TeamB' && normalizedOutcome !== 'Draw') {
+            showNotification('Could not determine outcome for this match. Please try again.', 'error');
+            return;
+          }
         } else {
-          normalizedOutcome = normalizedOutcome.toUpperCase();
+          if (itemData?.optionType === 'options' && Array.isArray(itemData?.options) && itemData.options.length > 0) {
+            const matchOpt = itemData.options.find(
+              (o) => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase()
+            );
+            if (!matchOpt) {
+              showNotification('Invalid option for this poll. Please refresh and try again.', 'error');
+              return;
+            }
+            normalizedOutcome = String(matchOpt.text).trim();
+          } else {
+            normalizedOutcome = normalizedOutcome.toUpperCase();
+          }
         }
         
         // Calculate actual shares to sell

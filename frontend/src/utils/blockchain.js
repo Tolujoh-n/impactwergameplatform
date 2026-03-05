@@ -291,10 +291,28 @@ export const getFees = async () => {
  * Boost Prediction Functions
  */
 
-// Stake boost
+// Get market options from contract (read-only, for validation before staking)
+export const getMarketOptions = async (marketId) => {
+  const contract = getContractReadOnly();
+  const options = await contract.getMarketOptions(marketId);
+  return Array.isArray(options) ? options.map((o) => (typeof o === 'string' ? o : String(o || '').trim())) : [];
+};
+
+// Stake boost (validates outcome against contract options when possible)
 export const stakeBoost = async (marketId, outcome, amountEth) => {
   const contract = await getContract();
   const amountWei = ethToWei(amountEth);
+  // Simulate first to get a clear revert reason if the call would fail
+  try {
+    await contract.stakeBoost.staticCall(marketId, outcome, { value: amountWei });
+  } catch (simulateError) {
+    const msg = simulateError?.reason || simulateError?.shortMessage || simulateError?.message;
+    if (msg && typeof msg === 'string' && msg.includes('revert')) {
+      const reason = msg.replace(/.*revert.*?([^"]*)/i, '$1').trim() || msg;
+      throw new Error(reason || 'Transaction would fail. Check market is active and your selection is valid.');
+    }
+    throw simulateError;
+  }
   const tx = await contract.stakeBoost(marketId, outcome, { value: amountWei });
   await tx.wait();
   return tx.hash;
