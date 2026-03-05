@@ -1502,7 +1502,11 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
             const matchOpt = itemData.options.find(
               (o) => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase()
             );
-            normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
+            if (!matchOpt) {
+              showNotification('Invalid option for this poll market. Please refresh and try again.', 'error');
+              return;
+            }
+            normalizedOutcome = String(matchOpt.text).trim();
           } else {
             normalizedOutcome = normalizedOutcome.toUpperCase();
           }
