@@ -182,16 +182,21 @@ const MatchDetail = () => {
           // Normalize outcome to match contract options exactly (match: TeamA/Draw/TeamB; poll YES/NO or custom option text)
           let normalizedOutcome = String(outcome || '').trim();
           if (!isPoll) {
-            if (normalizedOutcome.toLowerCase() === 'teama') {
+            const lower = normalizedOutcome.toLowerCase();
+            const teamALower = (currentItem.teamA || '').trim().toLowerCase();
+            const teamBLower = (currentItem.teamB || '').trim().toLowerCase();
+            if (lower === 'teama' || (teamALower && lower === teamALower)) {
               normalizedOutcome = 'TeamA';
-            } else if (normalizedOutcome.toLowerCase() === 'teamb') {
+            } else if (lower === 'teamb' || (teamBLower && lower === teamBLower)) {
               normalizedOutcome = 'TeamB';
-            } else if (normalizedOutcome.toLowerCase() === 'draw') {
+            } else if (lower === 'draw') {
               normalizedOutcome = 'Draw';
             }
           } else {
             if (currentItem?.optionType === 'options' && Array.isArray(currentItem?.options) && currentItem.options.length > 0) {
-              const matchOpt = currentItem.options.find(o => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase());
+              const matchOpt = currentItem.options.find(
+                (o) => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase()
+              );
               normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
             } else {
               normalizedOutcome = normalizedOutcome.toUpperCase();
@@ -279,16 +284,21 @@ const MatchDetail = () => {
       
       // Normalize outcome to match contract options exactly
       if (!isPoll) {
-        if (normalizedOutcome.toLowerCase() === 'teama') {
+        const lower = String(normalizedOutcome || '').trim().toLowerCase();
+        const teamALower = (item.teamA || '').trim().toLowerCase();
+        const teamBLower = (item.teamB || '').trim().toLowerCase();
+        if (lower === 'teama' || (teamALower && lower === teamALower)) {
           normalizedOutcome = 'TeamA';
-        } else if (normalizedOutcome.toLowerCase() === 'teamb') {
+        } else if (lower === 'teamb' || (teamBLower && lower === teamBLower)) {
           normalizedOutcome = 'TeamB';
-        } else if (normalizedOutcome.toLowerCase() === 'draw') {
+        } else if (lower === 'draw') {
           normalizedOutcome = 'Draw';
         }
       } else {
         if (item?.optionType === 'options' && Array.isArray(item?.options) && item.options.length > 0) {
-          const matchOpt = item.options.find(o => o && String(o.text).trim().toLowerCase() === String(normalizedOutcome).trim().toLowerCase());
+          const matchOpt = item.options.find(
+            (o) => o && String(o.text).trim().toLowerCase() === String(normalizedOutcome).trim().toLowerCase()
+          );
           normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
         } else {
           normalizedOutcome = normalizedOutcome.toUpperCase();
@@ -1474,19 +1484,24 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           return;
         }
         
-        // Normalize outcome
+        // Normalize outcome to match contract options exactly
         let normalizedOutcome = String(selectedOption || '').trim();
         if (!isPoll) {
-          if (normalizedOutcome.toLowerCase() === 'teama') {
+          const lower = normalizedOutcome.toLowerCase();
+          const teamALower = (itemData.teamA || '').trim().toLowerCase();
+          const teamBLower = (itemData.teamB || '').trim().toLowerCase();
+          if (lower === 'teama' || (teamALower && lower === teamALower)) {
             normalizedOutcome = 'TeamA';
-          } else if (normalizedOutcome.toLowerCase() === 'teamb') {
+          } else if (lower === 'teamb' || (teamBLower && lower === teamBLower)) {
             normalizedOutcome = 'TeamB';
-          } else if (normalizedOutcome.toLowerCase() === 'draw') {
+          } else if (lower === 'draw') {
             normalizedOutcome = 'Draw';
           }
         } else {
           if (itemData?.optionType === 'options' && Array.isArray(itemData?.options) && itemData.options.length > 0) {
-            const matchOpt = itemData.options.find(o => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase());
+            const matchOpt = itemData.options.find(
+              (o) => o && String(o.text).trim().toLowerCase() === normalizedOutcome.toLowerCase()
+            );
             normalizedOutcome = matchOpt ? String(matchOpt.text).trim() : normalizedOutcome.toUpperCase();
           } else {
             normalizedOutcome = normalizedOutcome.toUpperCase();
