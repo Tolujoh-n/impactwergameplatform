@@ -1,20 +1,20 @@
 require("dotenv").config();
 const HDWalletProvider = require("@truffle/hdwallet-provider");
 
+// Use an RPC that avoids Windows SSL issues; override in .env with BASE_RPC_URL or BASE_SEPOLIA_RPC
+const BASE_RPC = process.env.BASE_SEPOLIA_RPC || process.env.BASE_RPC_URL || "https://base-sepolia-rpc.publicnode.com";
+
 module.exports = {
   networks: {
-    // Base Testnet Configuration
     baseTestnet: {
       provider: () =>
-        new HDWalletProvider(
-          process.env.MNEMONIC, // Your wallet's mnemonic
-          "https://sepolia.base.org" // RPC URL for Base Testnet
-        ),
-      network_id: "*", // Network ID for Base Testnet: 84532
-      gas: 8000000, // Gas limit
-      gasPrice: 1000000000, // Gas price (1 Gwei)
-      timeoutBlocks: 200, // Increase timeout for deployment
-      skipDryRun: true, // Skip dry run before migrations
+        new HDWalletProvider(process.env.MNEMONIC, BASE_RPC),
+      network_id: 84532,
+      gas: 8000000,
+      gasPrice: 1000000000,
+      timeoutBlocks: 200,
+      skipDryRun: true,
+      networkCheckTimeout: 10000,
     },
   },
 
