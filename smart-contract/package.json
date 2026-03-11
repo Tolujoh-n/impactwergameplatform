@@ -1,0 +1,12 @@
+{
+  "name": "wergame-contract",
+  "version": "1.0.0",
+  "description": "WeRgame smart contract - use deploy-standalone.js if Truffle migrate fails (TLS/block tracker)",
+  "scripts": {
+    "deploy": "node scripts/deploy-standalone.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "ethers": "^5.7.2"
+  }
+}

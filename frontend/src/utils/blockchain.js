@@ -18,7 +18,7 @@ export const BASE_TESTNET_PARAMS = {
 export const WERGAME_ABI = WeRgame.abi;
 
 // Contract address (will be set after deployment)
-let CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || '0x3F45457e69e1eae0B044141E2AE0cf61cc77E6C0';
+let CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || '0x148cCBaf340adE10Cc0e57dD43Ab127D5Abfc728';
 
 export const setContractAddress = (address) => {
   CONTRACT_ADDRESS = address;

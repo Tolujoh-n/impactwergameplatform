@@ -1,4 +1,4 @@
-# Worklob Contract
+# wergame Contract
 
 ## Install
 
@@ -16,20 +16,22 @@ npm install --save @openzeppelin/contracts
 
 - Deploy a specific contract by selecting it's migration number: `truffle migrate --network baseTestnet --f 2 --to 2`
 
-### If you see SSL/TLS or PollingBlockTracker errors
+### If you see SSL/TLS or PollingBlockTracker errors – use standalone deploy
 
-The default RPC is set to `https://base-sepolia-rpc.publicnode.com` to avoid Windows SSL issues. To use another RPC, set in `.env`:
+When `truffle migrate` keeps failing with "PollingBlockTracker" or "socket disconnected", deploy **without Truffle**:
 
-```
-BASE_RPC_URL=https://sepolia.base.org
-# or
-BASE_SEPOLIA_RPC=https://base-sepolia.drpc.org
-```
+1. Compile once: `truffle compile`
+2. Install deps: `npm install`
+3. Deploy: `node scripts/deploy-standalone.js` (or `npm run deploy`)
 
-If migration fails **after** you see a transaction hash, the tx may still have been mined. Check it on [Base Sepolia Explorer](https://sepolia.basescan.org/) and update your app’s contract address if it’s a new deployment.
+This uses ethers.js only (no Truffle block tracker). The script reads `MNEMONIC` and `BASE_RPC_URL` from `.env`, deploys WeRgame, and writes the contract address to `deployed-address.txt`.
+
+Set `BASE_RPC_URL` in `.env` to a **Base Sepolia** RPC (chainId 84532), e.g. `https://base-sepolia-rpc.publicnode.com`. Do not use `base.llamarpc.com` for testnet (that is Base Mainnet).
+
+If Truffle migration fails **after** you see a transaction hash, the tx may still have been mined. Check it on [Base Sepolia Explorer](https://sepolia.basescan.org/) and use the "Created" contract address.
 
 ##
 
-- Wergame wallet address : 0x3F45457e69e1eae0B044141E2AE0cf61cc77E6C0
+- Wergame wallet address : 0x148cCBaf340adE10Cc0e57dD43Ab127D5Abfc728
 
 

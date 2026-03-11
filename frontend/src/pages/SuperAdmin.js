@@ -16,6 +16,7 @@ import {
   getClaimPredictionWinsPoolBalance,
   fundClaimPredictionWinsPool,
   withdrawFromClaimPredictionWinsPool,
+  ensureWalletConnected,
 } from '../utils/blockchain';
 
 const ITEMS_PER_PAGE = 20;
@@ -67,13 +68,13 @@ const SuperAdmin = () => {
   };
 
   const handleSetFees = async () => {
-    // Wallet will auto-connect when blockchain function is called
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+    try {
+      // Connect wallet and switch to Base Sepolia if needed (pops wallet)
+      await ensureWalletConnected();
+    } catch (switchErr) {
+      showNotification(switchErr?.message || 'Please switch to Base Sepolia in your wallet', 'error');
       return;
     }
-    
     try {
       // First, set fees on blockchain
       const txHash = await setFeesOnChain(
@@ -140,13 +141,12 @@ const SuperAdmin = () => {
   };
 
   const handleTransfer = async () => {
-    // Wallet will auto-connect when blockchain function is called
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+    try {
+      await ensureWalletConnected();
+    } catch (switchErr) {
+      showNotification(switchErr?.message || 'Please switch to Base Sepolia in your wallet', 'error');
       return;
     }
-    
     try {
       // Transfer on blockchain first
       const txHash = await transferFundsOnChain(transferTo, parseFloat(transferAmount));
@@ -171,11 +171,12 @@ const SuperAdmin = () => {
   const handleFundJackpotPool = async () => {
     // Wallet will auto-connect when blockchain function is called
     
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+    try {
+      await ensureWalletConnected();
+    } catch (switchErr) {
+      showNotification(switchErr?.message || 'Please switch to Base Sepolia in your wallet', 'error');
       return;
     }
-    
     if (!jackpotFundAmount || parseFloat(jackpotFundAmount) <= 0) {
       showNotification('Please enter a valid amount', 'warning');
       return;
@@ -193,13 +194,12 @@ const SuperAdmin = () => {
   };
   
   const handleWithdrawFromJackpotPool = async () => {
-    // Wallet will auto-connect when blockchain function is called
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+    try {
+      await ensureWalletConnected();
+    } catch (switchErr) {
+      showNotification(switchErr?.message || 'Please switch to Base Sepolia in your wallet', 'error');
       return;
     }
-    
     if (!jackpotWithdrawAmount || parseFloat(jackpotWithdrawAmount) <= 0) {
       showNotification('Please enter a valid amount', 'warning');
       return;
@@ -223,8 +223,10 @@ const SuperAdmin = () => {
   };
 
   const handleFundClaimPredictionWinsPool = async () => {
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+    try {
+      await ensureWalletConnected();
+    } catch (switchErr) {
+      showNotification(switchErr?.message || 'Please switch to Base Sepolia in your wallet', 'error');
       return;
     }
     if (!claimPoolFundAmount || parseFloat(claimPoolFundAmount) <= 0) {
@@ -243,8 +245,10 @@ const SuperAdmin = () => {
   };
 
   const handleWithdrawFromClaimPredictionWinsPool = async () => {
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+    try {
+      await ensureWalletConnected();
+    } catch (switchErr) {
+      showNotification(switchErr?.message || 'Please switch to Base Sepolia in your wallet', 'error');
       return;
     }
     if (!claimPoolWithdrawAmount || parseFloat(claimPoolWithdrawAmount) <= 0) {
@@ -268,13 +272,12 @@ const SuperAdmin = () => {
   };
 
   const handleSetSuperAdmin = async () => {
-    // Wallet will auto-connect when blockchain function is called
-    
-    if (!isBaseSepolia) {
-      showNotification('Please switch to Base Sepolia Testnet', 'warning');
+    try {
+      await ensureWalletConnected();
+    } catch (switchErr) {
+      showNotification(switchErr?.message || 'Please switch to Base Sepolia in your wallet', 'error');
       return;
     }
-    
     try {
       // Set on blockchain first
       const txHash = await setSuperAdminOnChain(superAdminAddress);
@@ -616,9 +619,9 @@ const SuperAdmin = () => {
                 <p className="text-green-800 dark:text-green-200">
                   Connected: {account.slice(0, 6)}...{account.slice(-4)}
                 </p>
-                {!isBaseSepolia && (
+                {!isBaseSepolia && account && (
                   <p className="text-yellow-800 dark:text-yellow-200 mt-2">
-                    ⚠️ Please switch to Base Sepolia Testnet
+                    ⚠️ You're on a different network. Click any button below to open your wallet and switch to Base Sepolia automatically.
                   </p>
                 )}
               </div>
@@ -679,7 +682,7 @@ const SuperAdmin = () => {
                 />
                 <button
                   onClick={handleTransfer}
-                  disabled={!account || !isBaseSepolia}
+                  disabled={!account}
                   className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Transfer
@@ -706,7 +709,7 @@ const SuperAdmin = () => {
                     />
                     <button
                       onClick={handleFundJackpotPool}
-                      disabled={!account || !isBaseSepolia}
+                      disabled={!account}
                       className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Fund Pool
@@ -736,7 +739,7 @@ const SuperAdmin = () => {
                       />
                       <button
                         onClick={handleWithdrawFromJackpotPool}
-                        disabled={!account || !isBaseSepolia}
+                        disabled={!account}
                         className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Withdraw
@@ -780,7 +783,7 @@ const SuperAdmin = () => {
                     />
                     <button
                       onClick={handleFundClaimPredictionWinsPool}
-                      disabled={!account || !isBaseSepolia}
+                      disabled={!account}
                       className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Fund Pool
@@ -809,7 +812,7 @@ const SuperAdmin = () => {
                       />
                       <button
                         onClick={handleWithdrawFromClaimPredictionWinsPool}
-                        disabled={!account || !isBaseSepolia}
+                        disabled={!account}
                         className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Withdraw
