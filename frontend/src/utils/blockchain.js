@@ -170,7 +170,29 @@ export const getContractReadOnly = () => {
  * Convert ETH to Wei
  */
 export const ethToWei = (eth) => {
-  return ethers.parseEther(eth.toString());
+  return ethers.parseEther(String(eth));
+};
+
+/**
+ * Turn contract/RPC errors into a user-friendly message (avoids "data", "missing revert data", etc.)
+ */
+export const getBlockchainErrorMessage = (err) => {
+  const reason = err?.reason;
+  const shortMessage = err?.shortMessage;
+  const message = err?.message;
+  if (reason && typeof reason === 'string' && reason.length > 0 && reason !== 'data') {
+    return reason;
+  }
+  if (shortMessage && typeof shortMessage === 'string' && shortMessage.length > 0 && shortMessage !== 'data') {
+    return shortMessage;
+  }
+  if (message && typeof message === 'string') {
+    if (message === 'data' || message.includes('missing revert data')) {
+      return 'Transaction failed. Ensure the market is active, your selection is valid, and try again.';
+    }
+    return message;
+  }
+  return 'Transaction failed. Please try again or check your wallet network.';
 };
 
 /**
@@ -298,21 +320,10 @@ export const getMarketOptions = async (marketId) => {
   return Array.isArray(options) ? options.map((o) => (typeof o === 'string' ? o : String(o || '').trim())) : [];
 };
 
-// Stake boost (validates outcome against contract options when possible)
+// Stake boost
 export const stakeBoost = async (marketId, outcome, amountEth) => {
   const contract = await getContract();
-  const amountWei = ethToWei(amountEth);
-  // Simulate first to get a clear revert reason if the call would fail
-  try {
-    await contract.stakeBoost.staticCall(marketId, outcome, { value: amountWei });
-  } catch (simulateError) {
-    const msg = simulateError?.reason || simulateError?.shortMessage || simulateError?.message;
-    if (msg && typeof msg === 'string' && msg.includes('revert')) {
-      const reason = msg.replace(/.*revert.*?([^"]*)/i, '$1').trim() || msg;
-      throw new Error(reason || 'Transaction would fail. Check market is active and your selection is valid.');
-    }
-    throw simulateError;
-  }
+  const amountWei = ethToWei(String(amountEth));
   const tx = await contract.stakeBoost(marketId, outcome, { value: amountWei });
   await tx.wait();
   return tx.hash;
@@ -362,7 +373,7 @@ export const getBoostPrediction = async (marketId, userAddress, outcome) => {
 // Buy market shares
 export const buyMarketShares = async (marketId, outcome, amountEth) => {
   const contract = await getContract();
-  const amountWei = ethToWei(amountEth);
+  const amountWei = ethToWei(String(amountEth));
   const tx = await contract.buyMarketShares(marketId, outcome, { value: amountWei });
   const receipt = await tx.wait();
   return receipt.hash;

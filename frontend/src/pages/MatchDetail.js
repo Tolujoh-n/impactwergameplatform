@@ -12,6 +12,7 @@ import {
   addBoostStake,
   withdrawBoostStake,
   getMarketOptions,
+  getBlockchainErrorMessage,
   setContractAddress,
 } from '../utils/blockchain';
 import Modal from '../components/Modal';
@@ -250,7 +251,7 @@ const MatchDetail = () => {
             showNotification('Boost prediction submitted successfully!', 'success');
           } catch (blockchainError) {
             console.error('Blockchain transaction failed:', blockchainError);
-            const msg = blockchainError?.message || blockchainError?.reason || 'Blockchain transaction failed. Please try again.';
+            const msg = getBlockchainErrorMessage(blockchainError);
             showNotification(msg, 'error');
             throw blockchainError; // Re-throw to prevent backend call
           }
@@ -361,7 +362,7 @@ const MatchDetail = () => {
         await fetchData();
       } catch (blockchainError) {
         console.error('Blockchain transaction failed:', blockchainError);
-        showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+        showNotification(getBlockchainErrorMessage(blockchainError), 'error');
         throw blockchainError; // Re-throw to prevent backend call
       }
     } catch (error) {
@@ -1543,6 +1544,24 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           }
         }
         
+        // Optional: validate outcome against contract options to avoid obscure reverts
+        try {
+          const contractOptions = await getMarketOptions(itemData.marketId);
+          if (contractOptions.length > 0) {
+            const outcomeTrimmed = String(normalizedOutcome || '').trim();
+            const isAllowed = contractOptions.some((o) => String(o || '').trim() === outcomeTrimmed);
+            if (!isAllowed) {
+              showNotification(
+                `Your selection is not a valid option on the blockchain. Valid: ${contractOptions.join(', ')}.`,
+                'error'
+              );
+              return;
+            }
+          }
+        } catch (_) {
+          // If getMarketOptions fails (e.g. old contract), continue with buy
+        }
+
         try {
           // Buy on blockchain first - wait for transaction to complete
           showNotification('Sending transaction to blockchain...', 'info');
@@ -1576,7 +1595,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           showNotification('Buy order executed successfully!', 'success');
         } catch (blockchainError) {
           console.error('Blockchain transaction failed:', blockchainError);
-          showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+          showNotification(getBlockchainErrorMessage(blockchainError), 'error');
           return; // Exit early, don't process backend
         }
       } else {
@@ -1695,7 +1714,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           showNotification('Sell order executed successfully!', 'success');
         } catch (blockchainError) {
           console.error('Blockchain transaction failed:', blockchainError);
-          showNotification(blockchainError.message || 'Blockchain transaction failed. Please try again.', 'error');
+          showNotification(getBlockchainErrorMessage(blockchainError), 'error');
           return; // Exit early, don't process backend
         }
       }
