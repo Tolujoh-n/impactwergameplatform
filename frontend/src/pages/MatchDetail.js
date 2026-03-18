@@ -5,6 +5,16 @@ import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../components/Notification';
 import { useWallet } from '../context/WalletContext';
 import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
+import {
   buyMarketShares,
   sellMarketShares,
   claimPredictionWins,
@@ -556,6 +566,7 @@ const FreeMatchView = ({ item, isPoll, prediction, onPredict, onClaim, navigate,
                 </span>
               )}
             </div>
+
           </div>
           {/* Header with Images */}
           {!isPoll && (
@@ -1281,6 +1292,16 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
   const [tradeType, setTradeType] = useState('buy');
   const [amount, setAmount] = useState('');
   const [trades, setTrades] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [chartRange, setChartRange] = useState('1D'); // 1H,6H,1D,1W,1M,ALL,CUSTOM
+  const [customRangeFrom, setCustomRangeFrom] = useState('');
+  const [customRangeTo, setCustomRangeTo] = useState('');
+  const [chartData, setChartData] = useState([]);
   const [tradesTablePage, setTradesTablePage] = useState(1);
   const TRADES_PER_PAGE = 20;
   const [predictions, setPredictions] = useState({}); // Map of outcome -> prediction
@@ -1465,6 +1486,178 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     }
   }, [currentItem, item, isPoll]);
 
+  const getChartRangeBoundsMs = useCallback(() => {
+    const now = Date.now();
+    if (chartRange === 'ALL') {
+      return { fromMs: 0, toMs: now };
+    }
+    if (chartRange === 'CUSTOM') {
+      const fromMs = customRangeFrom ? new Date(customRangeFrom).getTime() : 0;
+      const toMs = customRangeTo ? new Date(customRangeTo).getTime() : now;
+      return {
+        fromMs: Number.isFinite(fromMs) ? fromMs : 0,
+        toMs: Number.isFinite(toMs) ? toMs : now,
+      };
+    }
+    const rangeToMs = {
+      '1H': 60 * 60 * 1000,
+      '6H': 6 * 60 * 60 * 1000,
+      '1D': 24 * 60 * 60 * 1000,
+      '1W': 7 * 24 * 60 * 60 * 1000,
+      '1M': 30 * 24 * 60 * 60 * 1000,
+    };
+    const durationMs = rangeToMs[chartRange] || rangeToMs['1D'];
+    return { fromMs: now - durationMs, toMs: now };
+  }, [chartRange, customRangeFrom, customRangeTo]);
+
+  const getOutcomeSeriesConfig = useCallback(() => {
+    if (isPoll) {
+      if (itemData.optionType === 'options' && Array.isArray(itemData.options) && itemData.options.length > 0) {
+        const palette = [
+          '#2563eb', // blue
+          '#dc2626', // red
+          '#7c3aed', // purple
+          '#16a34a', // green
+          '#ea580c', // orange
+          '#0d9488', // teal
+          '#9333ea', // violet
+          '#0ea5e9', // sky
+        ];
+        return itemData.options.map((opt, idx) => ({
+          key: String(opt.text),
+          label: String(opt.text),
+          color: palette[idx % palette.length],
+        }));
+      }
+      return [
+        { key: 'YES', label: 'YES', color: '#16a34a' },
+        { key: 'NO', label: 'NO', color: '#dc2626' },
+      ];
+    }
+    return [
+      { key: 'TeamA', label: itemData.teamA || 'Team A', color: '#2563eb' },
+      { key: 'Draw', label: 'Draw', color: '#7c3aed' },
+      { key: 'TeamB', label: itemData.teamB || 'Team B', color: '#dc2626' },
+    ];
+  }, [isPoll, itemData.optionType, itemData.options, itemData.teamA, itemData.teamB]);
+
+  const normalizeTradeOutcomeKey = useCallback(
+    (rawOutcome) => {
+      const o = String(rawOutcome || '').trim();
+      if (!o) return '';
+      if (isPoll) {
+        if (itemData.optionType === 'options' && Array.isArray(itemData.options) && itemData.options.length > 0) {
+          // Option-based poll: trade outcome should be exact option text
+          return o;
+        }
+        const upper = o.toUpperCase();
+        return upper === 'YES' ? 'YES' : upper === 'NO' ? 'NO' : upper;
+      }
+
+      // Match: map TEAMA/TEAMB/DRAW to TeamA/TeamB/Draw
+      const upper = o.toUpperCase();
+      if (upper === 'TEAMA' || upper === 'TEAMA') return 'TeamA';
+      if (upper === 'TEAMB' || upper === 'TEAMB') return 'TeamB';
+      if (upper === 'DRAW') return 'Draw';
+      if (o === 'TeamA' || o === 'TeamB' || o === 'Draw') return o;
+      return o;
+    },
+    [isPoll, itemData.optionType, itemData.options]
+  );
+
+  useEffect(() => {
+    const series = getOutcomeSeriesConfig();
+    const { fromMs, toMs } = getChartRangeBoundsMs();
+
+    const sortedTradesAsc = [...(trades || [])]
+      .filter((t) => t && t.timestamp)
+      .map((t) => ({
+        ...t,
+        timestampMs: new Date(t.timestamp).getTime(),
+      }))
+      .filter((t) => Number.isFinite(t.timestampMs))
+      .sort((a, b) => a.timestampMs - b.timestampMs)
+      .filter((t) => t.timestampMs >= fromMs && t.timestampMs <= toMs);
+
+    // Initialize last-known prices using current computed prices
+    const lastPriceByKey = {};
+    if (isPoll) {
+      if (itemData.optionType === 'options' && Array.isArray(itemData.options)) {
+        series.forEach((s) => {
+          lastPriceByKey[s.key] = Number(prices[s.key] ?? prices[getPriceKey(s.key)] ?? 0);
+        });
+      } else {
+        lastPriceByKey.YES = Number(prices.yes ?? 0);
+        lastPriceByKey.NO = Number(prices.no ?? 0);
+      }
+    } else {
+      lastPriceByKey.TeamA = Number(prices.teamA ?? 0);
+      lastPriceByKey.TeamB = Number(prices.teamB ?? 0);
+      lastPriceByKey.Draw = Number(prices.draw ?? 0);
+    }
+
+    const points = [];
+    for (const trade of sortedTradesAsc) {
+      const key = normalizeTradeOutcomeKey(trade.outcome);
+      const tradePrice = Number(trade.price);
+      if (key && Number.isFinite(tradePrice) && tradePrice >= 0 && tradePrice <= 1) {
+        lastPriceByKey[key] = tradePrice;
+      }
+
+      const point = { t: trade.timestampMs };
+      series.forEach((s) => {
+        point[s.key] = Number(lastPriceByKey[s.key] ?? 0);
+      });
+      points.push(point);
+    }
+
+    // If no trades in range, show a single point "now" so chart isn't empty
+    if (points.length === 0) {
+      const point = { t: Date.now() };
+      series.forEach((s) => {
+        point[s.key] = Number(lastPriceByKey[s.key] ?? 0);
+      });
+      points.push(point);
+    }
+
+    // Downsample for performance
+    const MAX_POINTS = 250;
+    if (points.length > MAX_POINTS) {
+      const step = Math.ceil(points.length / MAX_POINTS);
+      const sampled = [];
+      for (let i = 0; i < points.length; i += step) sampled.push(points[i]);
+      setChartData(sampled);
+    } else {
+      setChartData(points);
+    }
+  }, [
+    trades,
+    prices,
+    isPoll,
+    itemData.optionType,
+    itemData.options,
+    getOutcomeSeriesConfig,
+    getChartRangeBoundsMs,
+    normalizeTradeOutcomeKey,
+    getPriceKey,
+  ]);
+
+  const fetchComments = useCallback(async () => {
+    try {
+      setCommentsLoading(true);
+      const itemId = (currentItem || item)?._id || item?._id;
+      if (!itemId) return;
+      const res = await api.get('/comments/market', {
+        params: { type: isPoll ? 'poll' : 'match', itemId },
+      });
+      setComments(Array.isArray(res.data?.comments) ? res.data.comments : []);
+    } catch (e) {
+      console.error('Error fetching comments:', e);
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [currentItem, item, isPoll]);
+
   const fetchUserMarketPrediction = useCallback(async () => {
     try {
       const itemId = (currentItem || item)?._id || item?._id;
@@ -1494,35 +1687,73 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
     if (user) {
       fetchUserMarketPrediction();
     }
-    
-    // Set up polling to refresh market data every 2 seconds for real-time updates
     const interval = setInterval(() => {
       fetchMarketData();
-      if (user) {
-        fetchUserMarketPrediction();
-      }
-      // Also refresh item data to get latest liquidity
-      const itemId = (currentItem || item)?._id || item?._id;
-      if (itemId) {
-        const refreshItem = async () => {
-          try {
-            const itemResponse = isPoll 
-              ? await api.get(`/polls/${itemId}`)
-              : await api.get(`/matches/${itemId}`);
-            setCurrentItem(itemResponse.data);
-            if (onItemUpdate) {
-              onItemUpdate(itemResponse.data);
-            }
-          } catch (error) {
-            console.error('Error refreshing item:', error);
-          }
-        };
-        refreshItem();
-      }
-    }, 2000);
-    
+    }, 5000);
     return () => clearInterval(interval);
   }, [currentItem, item, user, isPoll, fetchMarketData, fetchUserMarketPrediction]);
+
+  useEffect(() => {
+    fetchComments();
+  }, [fetchComments]);
+
+  const submitComment = async () => {
+    if (!user) {
+      showNotification('Please login to comment', 'warning');
+      return;
+    }
+    const itemId = (currentItem || item)?._id || item?._id;
+    const text = String(newComment || '').trim();
+    if (!text) {
+      showNotification('Comment cannot be empty', 'warning');
+      return;
+    }
+    setCommentSubmitting(true);
+    try {
+      await api.post('/comments/market', {
+        type: isPoll ? 'poll' : 'match',
+        itemId,
+        content: text,
+      });
+      setNewComment('');
+      await fetchComments();
+      showNotification('Comment posted', 'success');
+    } catch (e) {
+      showNotification(e?.response?.data?.message || 'Failed to post comment', 'error');
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
+  const submitReply = async (parentId) => {
+    if (!user) {
+      showNotification('Please login to reply', 'warning');
+      return;
+    }
+    const itemId = (currentItem || item)?._id || item?._id;
+    const text = String(replyText || '').trim();
+    if (!text) {
+      showNotification('Reply cannot be empty', 'warning');
+      return;
+    }
+    setCommentSubmitting(true);
+    try {
+      await api.post('/comments/market', {
+        type: isPoll ? 'poll' : 'match',
+        itemId,
+        content: text,
+        parentId,
+      });
+      setReplyText('');
+      setReplyingTo(null);
+      await fetchComments();
+      showNotification('Reply posted', 'success');
+    } catch (e) {
+      showNotification(e?.response?.data?.message || 'Failed to post reply', 'error');
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
 
   const handleTrade = async () => {
     if (!user) {
@@ -1909,100 +2140,123 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Main Content - Chart and Trades Table */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Price Chart */}
+          {/* 1. Price Chart - first on mobile */}
+          <div className="order-1 lg:col-span-3">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Price Chart
-              </h2>
-              <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                <div className="text-center">
-                  <p className="text-gray-500 dark:text-gray-400 mb-4">Price Chart</p>
-                  <div className={`flex items-center justify-center ${isPoll ? (itemData.optionType === 'options' && itemData.options ? 'space-x-4 flex-wrap' : 'space-x-8') : 'space-x-4'}`}>
-                    {isPoll ? (
-                      itemData.optionType === 'options' && itemData.options ? (
-                        itemData.options.map((opt, idx) => {
-                          const optPrice = prices[opt.text] || 0;
-                          return (
-                            <div key={idx} className="text-center flex flex-col items-center">
-                              {opt.image && (
-                                <img src={opt.image} alt={opt.text} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
-                              )}
-                              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                {(optPrice * 100).toFixed(1)}%
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
-                                {(priceAmounts[opt.text] || 0).toFixed(4)} ETH
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{opt.text}</p>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <>
-                          <div className="text-center">
-                            <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                              {(prices.yes * 100).toFixed(1)}%
-                            </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
-                              {(priceAmounts.yes || 0).toFixed(4)} ETH
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">YES</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-3xl font-bold text-red-600 dark:text-red-400">
-                              {(prices.no * 100).toFixed(1)}%
-                            </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
-                              {(priceAmounts.no || 0).toFixed(4)} ETH
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">NO</p>
-                          </div>
-                        </>
-                      )
-                    ) : (
-                      <>
-                        <div className="text-center flex flex-col items-center">
-                          {itemData.teamAImage && (
-                            <img src={itemData.teamAImage} alt={itemData.teamA} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
-                          )}
-                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                            {(prices.teamA * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
-                            {(priceAmounts.teamA || 0).toFixed(4)} ETH
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{itemData.teamA}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                            {(prices.draw * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
-                            {(priceAmounts.draw || 0).toFixed(4)} ETH
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Draw</p>
-                        </div>
-                        <div className="text-center flex flex-col items-center">
-                          {itemData.teamBImage && (
-                            <img src={itemData.teamBImage} alt={itemData.teamB} className="w-16 h-16 object-cover rounded-full mb-2 border-2 border-gray-300 dark:border-gray-600" />
-                          )}
-                          <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                            {(prices.teamB * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
-                            {(priceAmounts.teamB || 0).toFixed(4)} ETH
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{itemData.teamB}</p>
-                        </div>
-                      </>
-                    )}
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                    Price Chart
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {['1H', '6H', '1D', '1W', '1M', 'ALL', 'CUSTOM'].map((range) => (
+                      <button
+                        key={range}
+                        type="button"
+                        onClick={() => setChartRange(range)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                          chartRange === range
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {range === 'CUSTOM' ? 'Custom' : range}
+                      </button>
+                    ))}
                   </div>
+                </div>
+
+                {chartRange === 'CUSTOM' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        From
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={customRangeFrom}
+                        onChange={(e) => setCustomRangeFrom(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        To
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={customRangeTo}
+                        onChange={(e) => setCustomRangeTo(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="h-72 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.25} />
+                      <XAxis
+                        dataKey="t"
+                        type="number"
+                        domain={['dataMin', 'dataMax']}
+                        tickFormatter={(v) => {
+                          const d = new Date(v);
+                          return chartRange === '1H' || chartRange === '6H'
+                            ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        }}
+                        tick={{ fontSize: 12, fill: '#6b7280' }}
+                        axisLine={{ strokeOpacity: 0.3 }}
+                        tickLine={{ strokeOpacity: 0.3 }}
+                      />
+                      <YAxis
+                        domain={[0, 1]}
+                        tickFormatter={(v) => `${Math.round(v * 100)}%`}
+                        tick={{ fontSize: 12, fill: '#6b7280' }}
+                        axisLine={{ strokeOpacity: 0.3 }}
+                        tickLine={{ strokeOpacity: 0.3 }}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [`${(Number(value) * 100).toFixed(1)}%`, name]}
+                        labelFormatter={(label) => new Date(label).toLocaleString()}
+                      />
+                      <Legend />
+                      {getOutcomeSeriesConfig().map((s) => (
+                        <Line
+                          key={s.key}
+                          type="monotone"
+                          dataKey={s.key}
+                          name={s.label}
+                          stroke={s.color}
+                          strokeWidth={2}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                  {getOutcomeSeriesConfig().map((s) => {
+                    const latest = chartData?.length ? chartData[chartData.length - 1]?.[s.key] : null;
+                    return (
+                      <div key={s.key} className="flex items-center gap-2">
+                        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                        <span className="font-semibold text-gray-700 dark:text-gray-200">{s.label}</span>
+                        <span>{latest != null ? `${(Number(latest) * 100).toFixed(1)}%` : '--'}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
+          </div>
 
+          {/* 3. Recent Trades + Comments - third on mobile */}
+          <div className="order-3 lg:col-span-3 space-y-6">
             {/* Recent Trades Table */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
@@ -2154,11 +2408,187 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                 </div>
               )}
             </div>
+
+            {/* Comments - Market only */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Comments</h2>
+              </div>
+              <div className="space-y-3">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder={user ? 'Write a comment…' : 'Login to comment…'}
+                  disabled={!user || commentSubmitting}
+                  className="w-full px-4 py-3 border rounded-lg dark:bg-gray-700 dark:text-white"
+                  rows={3}
+                  maxLength={1000}
+                />
+                <div className="flex items-center justify-end">
+                  <button
+                    onClick={submitComment}
+                    disabled={!user || commentSubmitting}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {commentSubmitting ? 'Posting…' : 'Post Comment'}
+                  </button>
+                </div>
+              </div>
+              <div className="mt-6 space-y-4">
+                {commentsLoading ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading comments…</p>
+                ) : comments.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No comments yet. Be the first to comment.</p>
+                ) : (
+                  comments.map((c) => (
+                    <div key={c._id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {c.user?.username ||
+                            (c.user?.walletAddress
+                              ? `${String(c.user.walletAddress).slice(0, 6)}…${String(c.user.walletAddress).slice(-4)}`
+                              : 'Anonymous')}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {c.createdAt ? new Date(c.createdAt).toLocaleString() : ''}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                        {c.content}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              if (!user) {
+                                showNotification('Please login to reply', 'warning');
+                                return;
+                              }
+                              setReplyingTo(replyingTo === c._id ? null : c._id);
+                              setReplyText('');
+                            }}
+                            className="text-xs px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+                          >
+                            Reply
+                          </button>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!user) {
+                              showNotification('Please login to like comments', 'warning');
+                              return;
+                            }
+                            try {
+                              await api.post(`/comments/market/${c._id}/like`);
+                              await fetchComments();
+                            } catch (e) {
+                              showNotification(e?.response?.data?.message || 'Failed to like comment', 'error');
+                            }
+                          }}
+                          className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path d="M2 10.5A2.5 2.5 0 014.5 8H7V4.5A2.5 2.5 0 019.5 2 1.5 1.5 0 0111 3.5V7h3.764a2.5 2.5 0 012.47 2.93l-1.2 6A2.5 2.5 0 0113.57 18H6a2 2 0 01-2-2v-5.5z" />
+                          </svg>
+                          <span>{Array.isArray(c.likes) ? c.likes.length : c.likeCount || 0}</span>
+                        </button>
+                      </div>
+                      {replyingTo === c._id && (
+                        <div className="mt-3 space-y-2">
+                          <textarea
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="Write a reply…"
+                            disabled={commentSubmitting}
+                            className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white"
+                            rows={2}
+                            maxLength={1000}
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setReplyingTo(null);
+                                setReplyText('');
+                              }}
+                              disabled={commentSubmitting}
+                              className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => submitReply(c._id)}
+                              disabled={commentSubmitting}
+                              className="px-3 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+                            >
+                              {commentSubmitting ? 'Posting…' : 'Post Reply'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {Array.isArray(c.replies) && c.replies.length > 0 && (
+                        <div className="mt-4 space-y-3 pl-4 border-l border-gray-200 dark:border-gray-700">
+                          {c.replies.map((r) => (
+                            <div key={r._id} className="rounded-lg p-3 bg-gray-50 dark:bg-gray-900/40">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  {r.user?.username ||
+                                    (r.user?.walletAddress
+                                      ? `${String(r.user.walletAddress).slice(0, 6)}…${String(r.user.walletAddress).slice(-4)}`
+                                      : 'Anonymous')}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  {r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}
+                                </div>
+                              </div>
+                              <div className="mt-2 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                                {r.content}
+                              </div>
+                              <div className="mt-2 flex justify-end">
+                                <button
+                                  onClick={async () => {
+                                    if (!user) {
+                                      showNotification('Please login to like comments', 'warning');
+                                      return;
+                                    }
+                                    try {
+                                      await api.post(`/comments/market/${r._id}/like`);
+                                      await fetchComments();
+                                    } catch (e) {
+                                      showNotification(e?.response?.data?.message || 'Failed to like comment', 'error');
+                                    }
+                                  }}
+                                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path d="M2 10.5A2.5 2.5 0 014.5 8H7V4.5A2.5 2.5 0 019.5 2 1.5 1.5 0 0111 3.5V7h3.764a2.5 2.5 0 012.47 2.93l-1.2 6A2.5 2.5 0 0113.57 18H6a2 2 0 01-2-2v-5.5z" />
+                                  </svg>
+                                  <span>{Array.isArray(r.likes) ? r.likes.length : r.likeCount || 0}</span>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Sidebar - Trading Panel */}
-          <aside className="lg:col-span-1">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 sticky top-24">
+          {/* 2. Sidebar - second on mobile */}
+          <aside className="order-2 lg:col-span-1">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 lg:sticky lg:top-24">
               {/* Check if resolved */}
               {itemData.isResolved || itemData.status === 'settled' || itemData.status === 'completed' ? (
                 // Show only Holdings when resolved
