@@ -37,7 +37,7 @@ app.use('/api/comments', require('./routes/comments'));
 
 // MongoDB connection
 mongoose
-  .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/wergame')
+  .connect(process.env.MONGODB_URI || '')
   .then(() => console.log('MongoDB connected'))
   .catch((err) => console.error('MongoDB connection error:', err));
 
