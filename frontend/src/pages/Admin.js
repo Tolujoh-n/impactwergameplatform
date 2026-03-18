@@ -877,7 +877,21 @@ const MatchesTab = ({ matches, cups, stages, loading, tablePage, setTablePage, i
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                  {match.result || 'Pending'}
+                  {(() => {
+                    if (!match.result) return 'Pending';
+                    const result = String(match.result).trim();
+                    if (result === 'TeamA' || result.toLowerCase() === 'teama') {
+                      return match.teamA || 'Team A';
+                    }
+                    if (result === 'TeamB' || result.toLowerCase() === 'teamb') {
+                      return match.teamB || 'Team B';
+                    }
+                    if (result === 'Draw' || result.toLowerCase() === 'draw') {
+                      return 'Draw';
+                    }
+                    // If backend already stored a display name, show it as-is
+                    return result;
+                  })()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div className="flex flex-wrap gap-2">

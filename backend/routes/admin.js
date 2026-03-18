@@ -852,24 +852,41 @@ router.post('/polls/:id/status', async (req, res) => {
 // Add liquidity to poll market
 router.post('/polls/:id/liquidity', async (req, res) => {
   try {
-    const { yesLiquidity, noLiquidity, optionIndex, optionLiquidity } = req.body;
+    const { yesLiquidity, noLiquidity, optionIndex, optionLiquidity, options } = req.body;
     const poll = await Poll.findById(req.params.id);
     
     if (!poll) {
       return res.status(404).json({ message: 'Poll not found' });
     }
-
+    
     // Handle option-based polls
-    if (poll.optionType === 'options' && optionIndex !== undefined && optionLiquidity !== undefined) {
-      if (!poll.options || !poll.options[optionIndex]) {
-        return res.status(400).json({ message: 'Invalid option index' });
+    if (poll.optionType === 'options') {
+      // New shape from frontend: options is an array of { text, liquidity }
+      if (Array.isArray(options) && options.length > 0) {
+        if (!poll.options || poll.options.length === 0) {
+          return res.status(400).json({ message: 'Poll has no options configured' });
+        }
+        options.forEach((opt, idx) => {
+          const amount = opt && typeof opt.liquidity === 'number' ? opt.liquidity : 0;
+          if (amount > 0 && poll.options[idx]) {
+            poll.options[idx].liquidity = (poll.options[idx].liquidity || 0) + amount;
+          }
+        });
+        poll.marketInitialized = true;
+      } else if (optionIndex !== undefined && optionLiquidity !== undefined) {
+        // Backwards-compatible shape: single option index + liquidity
+        if (!poll.options || !poll.options[optionIndex]) {
+          return res.status(400).json({ message: 'Invalid option index' });
+        }
+        poll.options[optionIndex].liquidity = (poll.options[optionIndex].liquidity || 0) + (optionLiquidity || 0);
+        poll.marketInitialized = true;
+      } else {
+        return res.status(400).json({ message: 'No liquidity data provided for option-based poll' });
       }
-      poll.options[optionIndex].liquidity += optionLiquidity || 0;
-      poll.marketInitialized = true;
     } else {
       // Normal Yes/No poll
-      poll.marketYesLiquidity += yesLiquidity || 0;
-      poll.marketNoLiquidity += noLiquidity || 0;
+      poll.marketYesLiquidity = (poll.marketYesLiquidity || 0) + (yesLiquidity || 0);
+      poll.marketNoLiquidity = (poll.marketNoLiquidity || 0) + (noLiquidity || 0);
       poll.marketInitialized = true;
     }
     

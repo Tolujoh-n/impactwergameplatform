@@ -13,6 +13,7 @@ import {
   withdrawBoostStake,
   getMarketOptions,
   getBlockchainErrorMessage,
+  hasSufficientEth,
   setContractAddress,
 } from '../utils/blockchain';
 import Modal from '../components/Modal';
@@ -161,6 +162,11 @@ const MatchDetail = () => {
             showNotification('Please enter an amount to stake', 'warning');
             return;
           }
+          const amountNum = parseFloat(amount);
+          if (Number.isNaN(amountNum) || amountNum <= 0) {
+            showNotification('Please enter a valid amount to stake', 'warning');
+            return;
+          }
           
           // Get item to get marketId - refresh to ensure we have latest data
           const currentItem = match || poll;
@@ -212,6 +218,19 @@ const MatchDetail = () => {
             } else {
               normalizedOutcome = normalizedOutcome.toUpperCase();
             }
+          }
+
+          // Check wallet balance before popping wallet for signature (if wallet already connected)
+          try {
+            if (account) {
+              const enough = await hasSufficientEth(account, amountNum);
+              if (!enough) {
+                showNotification('Insufficient funds in your wallet for this stake', 'error');
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('Could not verify wallet balance before boost stake:', e);
           }
           
           try {
@@ -412,7 +431,19 @@ const MatchDetail = () => {
   if (type === 'free') {
     return <FreeMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onClaim={handleClaim} navigate={navigate} locked={locked} />;
   } else if (type === 'boost') {
-    return <BoostMatchView item={item} isPoll={isPoll} prediction={prediction} onPredict={handlePredict} onStakeAction={handleStakeAction} onClaim={handleClaim} navigate={navigate} locked={locked} onRefreshPrediction={fetchUserPrediction} />;
+    return (
+      <BoostMatchView
+        item={item}
+        isPoll={isPoll}
+        prediction={prediction}
+        onPredict={handlePredict}
+        onStakeAction={handleStakeAction}
+        onClaim={handleClaim}
+        navigate={navigate}
+        locked={locked}
+        onRefreshPrediction={fetchUserPrediction}
+      />
+    );
   } else if (type === 'market') {
     return <MarketMatchView 
       item={item} 
@@ -878,7 +909,22 @@ const BoostMatchView = ({ item, isPoll, prediction, onPredict, onStakeAction, on
           {prediction ? (
             <div className={`rounded-lg p-6 mb-6 ${hasWon ? 'bg-green-50 dark:bg-green-900' : 'bg-gray-50 dark:bg-gray-700'}`}>
               <p className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Your Prediction: {prediction.outcome}
+                Your Prediction:{' '}
+                {!isPoll
+                  ? (() => {
+                      const outcome = String(prediction.outcome || '').trim();
+                      if (outcome === 'TeamA' || outcome.toLowerCase() === 'teama') {
+                        return item.teamA || 'Team A';
+                      }
+                      if (outcome === 'TeamB' || outcome.toLowerCase() === 'teamb') {
+                        return item.teamB || 'Team B';
+                      }
+                      if (outcome === 'Draw' || outcome.toLowerCase() === 'draw') {
+                        return 'Draw';
+                      }
+                      return outcome;
+                    })()
+                  : prediction.outcome}
               </p>
               <p className="text-gray-600 dark:text-gray-400 mb-2">
                 Staked Amount: {isResolved && !hasWon && prediction.originalStake 
@@ -1545,6 +1591,20 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
         }
         
         // Optional: validate outcome against contract options to avoid obscure reverts
+        // Check wallet balance before popping wallet for signature (if wallet already connected)
+        try {
+          const amountNum = parseFloat(amount);
+          if (!Number.isNaN(amountNum) && amountNum > 0 && account) {
+            const enough = await hasSufficientEth(account, amountNum);
+            if (!enough) {
+              showNotification('Insufficient funds in your wallet for this trade', 'error');
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Could not verify wallet balance before market buy:', e);
+        }
+
         try {
           const contractOptions = await getMarketOptions(itemData.marketId);
           if (contractOptions.length > 0) {

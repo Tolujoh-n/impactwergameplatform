@@ -611,6 +611,30 @@ export const getWalletBalance = async (address) => {
 };
 
 /**
+ * Check if a wallet has enough ETH for a given amount (in ETH).
+ * Adds a small buffer so we don't leave the user with zero for gas.
+ */
+export const hasSufficientEth = async (address, requiredEth, bufferEth = 0.0001) => {
+  try {
+    if (!address) {
+      // If we don't know the address yet, let the normal connect flow handle it
+      return true;
+    }
+    const balanceStr = await getWalletBalance(address);
+    const balance = parseFloat(balanceStr || '0');
+    const needed = parseFloat(requiredEth || 0) + bufferEth;
+    if (Number.isNaN(balance) || Number.isNaN(needed)) {
+      return true;
+    }
+    return balance >= needed;
+  } catch (e) {
+    console.error('Error checking sufficient ETH:', e);
+    // On error, don't block the transaction – let the wallet show the real error
+    return true;
+  }
+};
+
+/**
  * Listen for account changes
  */
 export const onAccountsChanged = (callback) => {
