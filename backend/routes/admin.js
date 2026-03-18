@@ -653,12 +653,12 @@ router.post('/matches/:id/resolve', async (req, res) => {
     match.originalBoostJackpotPool = match.boostJackpotPool || 0;
     
     // Free jackpot: distribute to winning free predictions
-    const freeWinningPredictions = predictions.filter(p => p.type === 'free' && p.status === 'won');
-    if (freeWinningPredictions.length > 0 && match.freeJackpotPool > 0) {
-      const jackpotPerWinner = match.freeJackpotPool / freeWinningPredictions.length;
-      const userIds = [...new Set(freeWinningPredictions.map(p => p.user.toString()))];
+    const freeWinningPredictions = predictions.filter((p) => p.type === 'free' && p.status === 'won');
+    const freeWinnerUserIds = [...new Set(freeWinningPredictions.map((p) => p.user.toString()))];
+    if (freeWinnerUserIds.length > 0 && match.freeJackpotPool > 0) {
+      const jackpotPerWinner = match.freeJackpotPool / freeWinnerUserIds.length;
       
-      for (const userId of userIds) {
+      for (const userId of freeWinnerUserIds) {
         const user = await User.findById(userId);
         if (user) {
           user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
@@ -671,12 +671,15 @@ router.post('/matches/:id/resolve', async (req, res) => {
     }
     
     // Boost jackpot: distribute to winning boost predictions
-    const boostWinningPredictions = boostPredictions.filter(p => p.status === 'won');
-    if (boostWinningPredictions.length > 0 && match.boostJackpotPool > 0) {
-      const jackpotPerWinner = match.boostJackpotPool / boostWinningPredictions.length;
-      const userIds = [...new Set(boostWinningPredictions.map(p => p.user.toString()))];
+    // Note: boost predictions are marked as 'settled' earlier, so we must use payout>0 (or original 'won') to identify winners
+    const boostWinningPredictions = boostPredictions.filter(
+      (p) => p.status === 'won' || (p.status === 'settled' && (p.payout || 0) > 0)
+    );
+    const boostWinnerUserIds = [...new Set(boostWinningPredictions.map((p) => p.user.toString()))];
+    if (boostWinnerUserIds.length > 0 && match.boostJackpotPool > 0) {
+      const jackpotPerWinner = match.boostJackpotPool / boostWinnerUserIds.length;
       
-      for (const userId of userIds) {
+      for (const userId of boostWinnerUserIds) {
         const user = await User.findById(userId);
         if (user) {
           user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
@@ -1114,12 +1117,12 @@ router.post('/polls/:id/resolve', async (req, res) => {
     
     // Distribute jackpots to winners
     // Free jackpot: distribute to winning free predictions
-    const freeWinningPredictions = predictions.filter(p => p.type === 'free' && p.status === 'won');
-    if (freeWinningPredictions.length > 0 && poll.freeJackpotPool > 0) {
-      const jackpotPerWinner = poll.freeJackpotPool / freeWinningPredictions.length;
-      const userIds = [...new Set(freeWinningPredictions.map(p => p.user.toString()))];
+    const freeWinningPredictions = predictions.filter((p) => p.type === 'free' && p.status === 'won');
+    const freeWinnerUserIds = [...new Set(freeWinningPredictions.map((p) => p.user.toString()))];
+    if (freeWinnerUserIds.length > 0 && poll.freeJackpotPool > 0) {
+      const jackpotPerWinner = poll.freeJackpotPool / freeWinnerUserIds.length;
       
-      for (const userId of userIds) {
+      for (const userId of freeWinnerUserIds) {
         const user = await User.findById(userId);
         if (user) {
           user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
@@ -1132,12 +1135,15 @@ router.post('/polls/:id/resolve', async (req, res) => {
     }
     
     // Boost jackpot: distribute to winning boost predictions
-    const boostWinningPredictions = boostPredictions.filter(p => p.status === 'won');
-    if (boostWinningPredictions.length > 0 && poll.boostJackpotPool > 0) {
-      const jackpotPerWinner = poll.boostJackpotPool / boostWinningPredictions.length;
-      const userIds = [...new Set(boostWinningPredictions.map(p => p.user.toString()))];
+    // Note: boost predictions are marked as 'settled' earlier, so we must use payout>0 (or original 'won') to identify winners
+    const boostWinningPredictions = boostPredictions.filter(
+      (p) => p.status === 'won' || (p.status === 'settled' && (p.payout || 0) > 0)
+    );
+    const boostWinnerUserIds = [...new Set(boostWinningPredictions.map((p) => p.user.toString()))];
+    if (boostWinnerUserIds.length > 0 && poll.boostJackpotPool > 0) {
+      const jackpotPerWinner = poll.boostJackpotPool / boostWinnerUserIds.length;
       
-      for (const userId of userIds) {
+      for (const userId of boostWinnerUserIds) {
         const user = await User.findById(userId);
         if (user) {
           user.jackpotBalance = (user.jackpotBalance || 0) + jackpotPerWinner;
