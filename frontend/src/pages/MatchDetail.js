@@ -2139,9 +2139,9 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
           {/* 1. Price Chart - first on mobile */}
-          <div className="order-1 lg:col-span-3">
+          <div className="order-1 md:col-span-3 space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2253,10 +2253,7 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* 3. Recent Trades + Comments - third on mobile */}
-          <div className="order-3 lg:col-span-3 space-y-6">
             {/* Recent Trades Table */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
@@ -2587,8 +2584,8 @@ const MarketMatchView = ({ item, isPoll, navigate, user, showNotification, locke
           </div>
 
           {/* 2. Sidebar - second on mobile */}
-          <aside className="order-2 lg:col-span-1">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 lg:sticky lg:top-24">
+          <aside className="order-2 md:col-span-1 md:sticky md:top-24 md:self-start h-fit">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               {/* Check if resolved */}
               {itemData.isResolved || itemData.status === 'settled' || itemData.status === 'completed' ? (
                 // Show only Holdings when resolved
