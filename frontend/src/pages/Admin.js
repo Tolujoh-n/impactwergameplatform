@@ -560,11 +560,32 @@ const Admin = () => {
       
       // Add liquidity on blockchain first
       try {
-        if (poll.optionType === 'options' && liquidity.options) {
-          for (const opt of liquidity.options) {
-            if (opt.liquidity > 0) {
-              await addLiquidity(poll.marketId, opt.text, opt.liquidity);
+        if (poll.optionType === 'options') {
+          // Optional poll: support both shapes:
+          // - liquidity.options: [{ text, liquidity }]
+          // - liquidity.optionIndex + liquidity.optionLiquidity (from modal)
+          if (Array.isArray(liquidity.options) && liquidity.options.length > 0) {
+            for (const opt of liquidity.options) {
+              const amount = parseFloat(opt?.liquidity) || 0;
+              const text = String(opt?.text || '').trim();
+              if (amount > 0 && text) {
+                await addLiquidity(poll.marketId, text, amount);
+              }
             }
+          } else if (liquidity.optionIndex !== undefined && liquidity.optionIndex !== '' && liquidity.optionLiquidity !== undefined) {
+            const idx = parseInt(liquidity.optionIndex, 10);
+            const amount = parseFloat(liquidity.optionLiquidity) || 0;
+            const optionText = poll.options && poll.options[idx] ? String(poll.options[idx].text || '').trim() : '';
+            if (!optionText) {
+              showNotification('Invalid option selected for this poll', 'error');
+              return;
+            }
+            if (amount > 0) {
+              await addLiquidity(poll.marketId, optionText, amount);
+            }
+          } else {
+            showNotification('Please select an option and enter liquidity amount', 'warning');
+            return;
           }
         } else {
           // Normal Yes/No poll
@@ -4213,10 +4234,19 @@ const AddPollLiquidityModal = ({ poll, onClose, onSubmit }) => {
           </>
         )}
         <div className="flex space-x-2">
-          <button type="submit" className="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600">
-            Add Liquidity
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Submitting…' : 'Add Liquidity'}
           </button>
-          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             Cancel
           </button>
         </div>
